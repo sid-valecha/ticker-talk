@@ -1,0 +1,1 @@
+# Ticker-Talk Backend Application
