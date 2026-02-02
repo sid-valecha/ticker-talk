@@ -144,6 +144,10 @@ ENV/
 env.bak/
 venv.bak/
 
+# Ticker-Talk cache
+backend/data_cache/*.db
+backend/data_cache/*.db-journal
+
 # Spyder project settings
 .spyderproject
 .spyproject
