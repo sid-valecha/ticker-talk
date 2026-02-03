@@ -1,75 +1,68 @@
 "use client";
 
-import { useEffect, useState } from "react";
-
-type HealthStatus = {
-  status: string;
-  environment: string;
-} | null;
+import { useState } from "react";
+import { analyzeStock, type AnalysisResponse } from "@/app/lib/api";
+import AnalysisForm from "@/app/components/AnalysisForm";
+import AnalysisResults from "@/app/components/AnalysisResults";
 
 export default function Home() {
-  const [health, setHealth] = useState<HealthStatus>(null);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [results, setResults] = useState<AnalysisResponse | null>(null);
 
-  useEffect(() => {
-    const checkHealth = async () => {
-      try {
-        const response = await fetch("http://localhost:8000/health");
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
-        }
-        const data = await response.json();
-        setHealth(data);
-        setError(null);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Connection failed");
-        setHealth(null);
-      } finally {
-        setLoading(false);
-      }
-    };
+  const handleSubmit = async (ticker: string, forecastHorizon?: 7 | 30) => {
+    setLoading(true);
+    setError(null);
+    setResults(null);
 
-    checkHealth();
-  }, []);
+    try {
+      const data = await analyzeStock({
+        ticker,
+        forecast_horizon: forecastHorizon,
+      });
+      setResults(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unknown error");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 dark:bg-black">
-      <main className="flex flex-col items-center gap-8 p-8">
-        <h1 className="text-4xl font-bold text-zinc-900 dark:text-zinc-50">
-          Ticker-Talk
-        </h1>
-        <p className="text-lg text-zinc-600 dark:text-zinc-400">
-          Natural-language stock analysis
-        </p>
+    <div className="min-h-screen bg-zinc-50 dark:bg-black">
+      <div className="max-w-5xl mx-auto px-4 py-8">
+        {/* Header */}
+        <header className="text-center mb-8">
+          <h1 className="text-4xl font-bold text-zinc-900 dark:text-zinc-50 mb-2">
+            Ticker Talk
+          </h1>
+          <p className="text-zinc-600 dark:text-zinc-400">
+            Stock analysis with technical indicators and forecasting
+          </p>
+        </header>
 
-        <div className="mt-8 rounded-lg border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-          <h2 className="mb-4 text-lg font-semibold text-zinc-900 dark:text-zinc-50">
-            Backend Status
-          </h2>
-
-          {loading && (
-            <div className="flex items-center gap-2 text-zinc-500">
-              <div className="h-3 w-3 animate-pulse rounded-full bg-zinc-400" />
-              <span>Checking connection...</span>
-            </div>
-          )}
-
-          {!loading && health && (
-            <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
-              <div className="h-3 w-3 rounded-full bg-green-500" />
-              <span>Connected ({health.environment})</span>
-            </div>
-          )}
-
-          {!loading && error && (
-            <div className="flex items-center gap-2 text-red-600 dark:text-red-400">
-              <div className="h-3 w-3 rounded-full bg-red-500" />
-              <span>Disconnected: {error}</span>
-            </div>
-          )}
+        {/* Input */}
+        <div className="max-w-md mx-auto mb-8">
+          <div className="rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 p-6">
+            <AnalysisForm onSubmit={handleSubmit} loading={loading} />
+          </div>
         </div>
-      </main>
+
+        {/* Error */}
+        {error && (
+          <div className="max-w-md mx-auto mb-8">
+            <div className="rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950 p-4">
+              <p className="text-sm text-red-800 dark:text-red-200">
+                <span className="font-medium">Error: </span>
+                {error}
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Results */}
+        {results && <AnalysisResults data={results} />}
+      </div>
     </div>
   );
 }
