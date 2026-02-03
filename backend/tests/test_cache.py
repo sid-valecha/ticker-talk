@@ -1,12 +1,21 @@
-import os
 import sqlite3
 from datetime import datetime, timedelta
 
 import pandas as pd
+import pytest
 
+import app.data.cache as cache_module
 from app.config import settings
-from app.data.cache import get_cached_data, get_db_path, init_db, is_cache_valid, store_data
+from app.data.cache import get_cached_data, get_db_path, init_db, store_data
 from app.data.demo_data import DEMO_DATA_DIR_ENV, DEMO_TICKERS, preload_demo_data_if_needed
+
+
+@pytest.fixture(autouse=True)
+def reset_db_initialized():
+    """Reset the _db_initialized flag before each test."""
+    cache_module._db_initialized = False
+    yield
+    cache_module._db_initialized = False
 
 
 def _sample_df() -> pd.DataFrame:
@@ -72,7 +81,8 @@ def test_demo_preload_uses_csv(tmp_path, monkeypatch):
 
     settings.ALPHA_VANTAGE_API_KEY = ""
 
+    init_db()  # Must init DB before preload
     preload_demo_data_if_needed()
-    cached = get_cached_data("AAPL", ttl_hours=24)
+    cached = get_cached_data(DEMO_TICKERS[0], ttl_hours=24)
     assert cached is not None
     assert cached["source"] == "demo"
