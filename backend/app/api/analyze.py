@@ -1,10 +1,21 @@
+"""Stock analysis API endpoint."""
+
 from datetime import date, timedelta
 import re
 import time
+from typing import Optional, Tuple
 
-from fastapi import APIRouter, HTTPException
+import pandas as pd
+from fastapi import APIRouter, HTTPException, Request
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 from app.config import settings
+
+limiter = Limiter(key_func=get_remote_address)
+from app.compute.backtest import walk_forward_backtest
+from app.compute.forecast_arima import forecast_arima
+from app.compute.indicators import compute_all_indicators, extract_indicator_summary
 from app.data.alpha_vantage import (
     AlphaVantageAPIError,
     AlphaVantageInvalidTicker,
@@ -13,71 +24,196 @@ from app.data.alpha_vantage import (
 )
 from app.data.cache import get_cached_data, log_request, store_data
 from app.data.demo_data import load_demo_data
-from app.models.schemas import AnalyzeRequest, AnalyzeResponse, Metadata
+from app.models.schemas import (
+    AnalyzeRequest,
+    AnalyzeResponse,
+    BacktestMetrics,
+    ForecastResult,
+    IndicatorSummary,
+    Metadata,
+    Plots,
+)
+from app.plots.charts import (
+    plot_forecast,
+    plot_price_and_ma,
+    plot_returns_volatility,
+    plot_rsi,
+)
 
 router = APIRouter()
 
 TICKER_PATTERN = re.compile(r"^[A-Z]{1,5}$")
 
 
+def _cached_data_to_dataframe(cached_data: list) -> Optional[pd.DataFrame]:
+    """Convert cached JSON data back to DataFrame with proper date index.
+
+    Returns None if data is empty or invalid.
+    """
+    if not cached_data:
+        return None
+
+    df = pd.DataFrame(cached_data)
+    if df.empty or "date" not in df.columns:
+        return None
+
+    df["date"] = pd.to_datetime(df["date"])
+    df.sort_values("date", inplace=True)
+    df.set_index("date", inplace=True)
+    return df
+
+
+def _generate_plots(
+    df: pd.DataFrame,
+    ticker: str,
+    forecast_data: Optional[dict] = None,
+) -> Plots:
+    """Generate all charts as base64 PNG strings."""
+    price_ma_plot = plot_price_and_ma(df, ticker=ticker)
+    returns_vol_plot = plot_returns_volatility(df, ticker=ticker)
+    rsi_plot = plot_rsi(df, ticker=ticker)
+
+    forecast_plot = None
+    if forecast_data is not None:
+        forecast_plot = plot_forecast(df, forecast_data, ticker=ticker)
+
+    return Plots(
+        price_and_ma=price_ma_plot,
+        returns_volatility=returns_vol_plot,
+        rsi=rsi_plot,
+        forecast=forecast_plot,
+    )
+
+
+def _run_forecast_and_backtest(
+    df: pd.DataFrame, horizon: int
+) -> Tuple[Optional[ForecastResult], Optional[BacktestMetrics], Optional[dict]]:
+    """Run ARIMA forecast and walk-forward backtest.
+
+    Returns (ForecastResult, BacktestMetrics, raw_forecast_data) or (None, None, None) if data insufficient.
+    """
+    series = df["adj_close"]
+
+    if len(series) < 60:
+        # Not enough data for forecasting
+        return None, None, None
+
+    try:
+        # Run forecast
+        forecast_data = forecast_arima(series, horizon=horizon)
+        forecast_result = ForecastResult(
+            horizon=horizon,
+            forecast=forecast_data["forecast"],
+            lower_ci=forecast_data["lower_ci"],
+            upper_ci=forecast_data["upper_ci"],
+            dates=forecast_data["dates"],
+            trend=forecast_data["trend"],
+        )
+
+        # Run backtest
+        backtest_data = walk_forward_backtest(series, horizon=horizon)
+        backtest_result = BacktestMetrics(
+            mae=backtest_data["mae"],
+            rmse=backtest_data["rmse"],
+            mape=backtest_data["mape"],
+        )
+
+        return forecast_result, backtest_result, forecast_data
+
+    except Exception as exc:
+        # Data insufficient, ARIMA convergence failure, or other model error
+        import logging
+        logging.getLogger(__name__).warning("Forecast/backtest failed: %s", exc)
+        return None, None, None
+
+
 @router.post("/analyze", response_model=AnalyzeResponse)
-def analyze_stock(request: AnalyzeRequest) -> AnalyzeResponse:
+@limiter.limit("10/minute")
+def analyze_stock(request: Request, body: AnalyzeRequest) -> AnalyzeResponse:
     start_time = time.perf_counter()
 
-    ticker = request.ticker.strip().upper()
+    ticker = body.ticker.strip().upper()
     if not TICKER_PATTERN.match(ticker):
         raise HTTPException(status_code=400, detail="Ticker must be 1-5 uppercase letters")
 
-    # Defaults for later steps; included here for forward compatibility
-    _start_date = request.start_date or (date.today() - timedelta(days=365)).isoformat()
-    _end_date = request.end_date or date.today().isoformat()
-
+    # Check cache first
     cached = get_cached_data(ticker, ttl_hours=settings.CACHE_TTL_HOURS)
+
     if cached:
-        latency_ms = int((time.perf_counter() - start_time) * 1000)
-        log_request("/api/analyze", ticker, True, latency_ms)
-        return AnalyzeResponse(
-            metadata=Metadata(
-                ticker=ticker,
-                cache_hit=True,
-                data_last_updated=cached["fetched_at"],
-                source=cached.get("source") or "alpha_vantage",
-                row_count=cached["row_count"],
-                min_date=cached["min_date"],
-                max_date=cached["max_date"],
+        # Reconstruct DataFrame from cached data
+        df = _cached_data_to_dataframe(cached["data"])
+        if df is not None:
+            cache_hit = True
+            source = cached.get("source") or "alpha_vantage"
+            fetched_at = cached["fetched_at"]
+            row_count = cached["row_count"]
+            min_date = cached["min_date"]
+            max_date = cached["max_date"]
+        else:
+            # Invalid cached data, treat as cache miss
+            cached = None
+
+    if not cached:
+        # Fetch from API or demo data
+        source = "alpha_vantage"
+        df = None
+        try:
+            df = fetch_daily_adjusted(ticker)
+        except AlphaVantageRateLimit:
+            df = load_demo_data(ticker)
+            source = "demo" if df is not None else source
+        except AlphaVantageInvalidTicker as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except AlphaVantageAPIError:
+            df = load_demo_data(ticker)
+            source = "demo" if df is not None else source
+
+        if df is None:
+            raise HTTPException(
+                status_code=503,
+                detail="Stock data unavailable (API error or missing demo data).",
             )
+
+        # Store in cache
+        stored = store_data(ticker, df, source=source)
+        cache_hit = False
+        fetched_at = stored["fetched_at"]
+        row_count = stored["row_count"]
+        min_date = stored["min_date"]
+        max_date = stored["max_date"]
+
+    # Compute indicators
+    df_with_indicators = compute_all_indicators(df)
+    indicator_summary = extract_indicator_summary(df_with_indicators)
+
+    # Run forecast and backtest if requested
+    forecast_result = None
+    backtest_result = None
+    forecast_data_raw = None
+    if body.forecast_horizon is not None:
+        forecast_result, backtest_result, forecast_data_raw = _run_forecast_and_backtest(
+            df, body.forecast_horizon
         )
 
-    source = "alpha_vantage"
-    try:
-        df = fetch_daily_adjusted(ticker)
-    except AlphaVantageRateLimit:
-        df = load_demo_data(ticker)
-        source = "demo" if df is not None else source
-    except AlphaVantageInvalidTicker as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except AlphaVantageAPIError:
-        df = load_demo_data(ticker)
-        source = "demo" if df is not None else source
+    # Generate plots
+    plots = _generate_plots(df_with_indicators, ticker, forecast_data=forecast_data_raw)
 
-    if df is None:
-        raise HTTPException(
-            status_code=503,
-            detail="Stock data unavailable (API error or missing demo data).",
-        )
-
-    stored = store_data(ticker, df, source=source)
+    # Log request metrics
     latency_ms = int((time.perf_counter() - start_time) * 1000)
-    log_request("/api/analyze", ticker, False, latency_ms)
+    log_request("/api/analyze", ticker, cache_hit, latency_ms)
 
     return AnalyzeResponse(
         metadata=Metadata(
             ticker=ticker,
-            cache_hit=False,
-            data_last_updated=stored["fetched_at"],
-            source=stored["source"],
-            row_count=stored["row_count"],
-            min_date=stored["min_date"],
-            max_date=stored["max_date"],
-        )
+            cache_hit=cache_hit,
+            data_last_updated=fetched_at,
+            source=source,
+            row_count=row_count,
+            min_date=min_date,
+            max_date=max_date,
+        ),
+        indicators=IndicatorSummary(**indicator_summary),
+        forecast=forecast_result,
+        backtest=backtest_result,
+        plots=plots,
     )

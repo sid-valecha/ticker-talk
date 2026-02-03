@@ -15,7 +15,7 @@ from app.data.alpha_vantage import (
 )
 from app.data.cache import get_cached_data, store_data
 
-DEMO_TICKERS = ["AAPL", "MSFT", "GOOGL"]
+DEMO_TICKERS = ["BMW"]
 DEMO_DATA_DIR_ENV = "TICKER_TALK_DEMO_DATA_DIR"
 
 
