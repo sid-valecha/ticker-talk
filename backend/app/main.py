@@ -7,7 +7,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
-from app.api import analyze
+from app.api import analyze, metrics
 from app.config import settings
 from app.data.cache import init_db
 from app.data.demo_data import DEMO_TICKERS, preload_demo_data_if_needed
@@ -80,3 +80,4 @@ def get_available_tickers():
 
 
 app.include_router(analyze.router, prefix="/api")
+app.include_router(metrics.router, prefix="/api", tags=["metrics"])
