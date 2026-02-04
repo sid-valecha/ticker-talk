@@ -1,7 +1,11 @@
 "use client";
 
-import { useState } from "react";
-import { analyzeStock, type AnalysisResponse } from "@/app/lib/api";
+import { useState, useEffect } from "react";
+import {
+  analyzeStock,
+  getAvailableTickers,
+  type AnalysisResponse,
+} from "@/app/lib/api";
 import AnalysisForm from "@/app/components/AnalysisForm";
 import AnalysisResults from "@/app/components/AnalysisResults";
 
@@ -9,6 +13,13 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [results, setResults] = useState<AnalysisResponse | null>(null);
+  const [availableTickers, setAvailableTickers] = useState<string[]>([]);
+
+  useEffect(() => {
+    getAvailableTickers()
+      .then(setAvailableTickers)
+      .catch(() => setAvailableTickers([]));
+  }, []);
 
   const handleSubmit = async (ticker: string, forecastHorizon?: 7 | 30) => {
     setLoading(true);
@@ -44,7 +55,11 @@ export default function Home() {
         {/* Input */}
         <div className="max-w-md mx-auto mb-8">
           <div className="rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 p-6">
-            <AnalysisForm onSubmit={handleSubmit} loading={loading} />
+            <AnalysisForm
+              onSubmit={handleSubmit}
+              loading={loading}
+              availableTickers={availableTickers}
+            />
           </div>
         </div>
 

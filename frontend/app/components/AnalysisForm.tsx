@@ -5,9 +5,14 @@ import { useState } from "react";
 interface AnalysisFormProps {
   onSubmit: (ticker: string, forecastHorizon?: 7 | 30) => void;
   loading: boolean;
+  availableTickers: string[];
 }
 
-export default function AnalysisForm({ onSubmit, loading }: AnalysisFormProps) {
+export default function AnalysisForm({
+  onSubmit,
+  loading,
+  availableTickers,
+}: AnalysisFormProps) {
   const [ticker, setTicker] = useState("");
   const [forecastHorizon, setForecastHorizon] = useState<"" | "7" | "30">("");
 
@@ -30,19 +35,23 @@ export default function AnalysisForm({ onSubmit, loading }: AnalysisFormProps) {
         >
           Stock Ticker
         </label>
-        <input
-          type="text"
+        <select
           id="ticker"
           value={ticker}
-          onChange={(e) => setTicker(e.target.value.toUpperCase())}
-          placeholder="e.g., AAPL, MSFT, BMW"
+          onChange={(e) => setTicker(e.target.value)}
           className="w-full px-4 py-2 border border-zinc-300 dark:border-zinc-600 rounded-lg bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           disabled={loading}
           required
-          maxLength={5}
-        />
+        >
+          <option value="">Select a ticker...</option>
+          {availableTickers.map((t) => (
+            <option key={t} value={t}>
+              {t}
+            </option>
+          ))}
+        </select>
         <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
-          1-5 uppercase letters (e.g., AAPL, MSFT, BMW)
+          Pre-loaded demo tickers with 10 years of historical data
         </p>
       </div>
 
