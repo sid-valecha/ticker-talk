@@ -94,7 +94,7 @@ export default function AnalysisForm({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Try: 'forecast AAPL for 30 days'"
-            className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-zinc-800 text-gray-900 dark:text-gray-100"
+            className="w-full px-4 py-3 border border-zinc-300/80 dark:border-zinc-600/80 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-transparent bg-white/90 dark:bg-zinc-900 text-gray-900 dark:text-gray-100 shadow-sm"
             disabled={loading || parsing}
             required
           />
@@ -135,7 +135,7 @@ export default function AnalysisForm({
         <button
           type="submit"
           disabled={loading || parsing || !query.trim()}
-          className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 px-4 rounded-lg disabled:bg-gray-400 disabled:cursor-not-allowed transition font-medium"
+          className="w-full bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-700 hover:to-blue-700 text-white py-3 px-4 rounded-lg disabled:from-zinc-400 disabled:to-zinc-400 disabled:cursor-not-allowed transition font-medium shadow-sm"
         >
           {parsing
             ? "Understanding query..."
