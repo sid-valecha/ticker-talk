@@ -10,7 +10,7 @@ from slowapi.util import get_remote_address
 from app.api import analyze
 from app.config import settings
 from app.data.cache import init_db
-from app.data.demo_data import preload_demo_data_if_needed
+from app.data.demo_data import DEMO_TICKERS, preload_demo_data_if_needed
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +71,12 @@ def on_startup() -> None:
 def health_check():
     """Health check endpoint."""
     return {"status": "ok", "environment": settings.ENVIRONMENT}
+
+
+@app.get("/api/tickers")
+def get_available_tickers():
+    """Get list of available demo tickers."""
+    return {"tickers": DEMO_TICKERS}
 
 
 app.include_router(analyze.router, prefix="/api")

@@ -15,7 +15,7 @@ from app.data.alpha_vantage import (
 )
 from app.data.cache import get_cached_data, store_data
 
-DEMO_TICKERS = ["BMW"]
+DEMO_TICKERS = ["AAPL", "MSFT", "GOOGL", "AMZN", "META", "TSLA", "NVDA", "NFLX", "AMD", "INTC"]
 DEMO_DATA_DIR_ENV = "TICKER_TALK_DEMO_DATA_DIR"
 
 
@@ -35,11 +35,16 @@ def load_demo_data(ticker: str) -> Optional[pd.DataFrame]:
     df = pd.read_csv(path)
     df.columns = [col.strip().lower() for col in df.columns]
 
-    required = ["date", "open", "high", "low", "close", "adj_close", "volume"]
+    # Required columns
+    required = ["date", "open", "high", "low", "close", "volume"]
     if not set(required).issubset(set(df.columns)):
         return None
 
-    df = df[required]
+    # Use adj_close if available, otherwise fall back to close
+    if "adj_close" not in df.columns:
+        df["adj_close"] = df["close"]
+
+    df = df[required + ["adj_close"]]
     df["date"] = pd.to_datetime(df["date"])
     df.sort_values("date", inplace=True)
     df.set_index("date", inplace=True)
