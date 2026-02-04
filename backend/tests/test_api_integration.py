@@ -15,11 +15,11 @@ class TestAnalyzeBasic:
     """Test basic analysis without forecast."""
 
     def test_analyze_returns_200(self):
-        response = client.post("/api/analyze", json={"ticker": "BMW"})
+        response = client.post("/api/analyze", json={"ticker": "AAPL"})
         assert response.status_code == 200
 
     def test_response_has_required_fields(self):
-        response = client.post("/api/analyze", json={"ticker": "BMW"})
+        response = client.post("/api/analyze", json={"ticker": "AAPL"})
         data = response.json()
 
         assert "metadata" in data
@@ -27,10 +27,10 @@ class TestAnalyzeBasic:
         assert "plots" in data
 
     def test_metadata_fields(self):
-        response = client.post("/api/analyze", json={"ticker": "BMW"})
+        response = client.post("/api/analyze", json={"ticker": "AAPL"})
         meta = response.json()["metadata"]
 
-        assert meta["ticker"] == "BMW"
+        assert meta["ticker"] == "AAPL"
         assert meta["row_count"] > 0
         assert meta["min_date"] is not None
         assert meta["max_date"] is not None
@@ -38,7 +38,7 @@ class TestAnalyzeBasic:
         assert isinstance(meta["cache_hit"], bool)
 
     def test_indicator_values_reasonable(self):
-        response = client.post("/api/analyze", json={"ticker": "BMW"})
+        response = client.post("/api/analyze", json={"ticker": "AAPL"})
         ind = response.json()["indicators"]
 
         assert ind["latest_price"] > 0
@@ -49,7 +49,7 @@ class TestAnalyzeBasic:
         assert isinstance(ind["avg_volatility_30d"], float)
 
     def test_plots_are_valid_base64_png(self):
-        response = client.post("/api/analyze", json={"ticker": "BMW"})
+        response = client.post("/api/analyze", json={"ticker": "AAPL"})
         plots = response.json()["plots"]
 
         for key in ("price_and_ma", "returns_volatility", "rsi"):
@@ -59,7 +59,7 @@ class TestAnalyzeBasic:
             assert raw[:4] == b"\x89PNG", f"{key} is not a valid PNG"
 
     def test_no_forecast_when_not_requested(self):
-        response = client.post("/api/analyze", json={"ticker": "BMW"})
+        response = client.post("/api/analyze", json={"ticker": "AAPL"})
         data = response.json()
 
         assert data.get("forecast") is None
@@ -72,7 +72,7 @@ class TestAnalyzeForecast:
 
     def test_7day_forecast(self):
         response = client.post(
-            "/api/analyze", json={"ticker": "BMW", "forecast_horizon": 7}
+            "/api/analyze", json={"ticker": "AAPL", "forecast_horizon": 7}
         )
         assert response.status_code == 200
 
@@ -86,7 +86,7 @@ class TestAnalyzeForecast:
 
     def test_30day_forecast(self):
         response = client.post(
-            "/api/analyze", json={"ticker": "BMW", "forecast_horizon": 30}
+            "/api/analyze", json={"ticker": "AAPL", "forecast_horizon": 30}
         )
         assert response.status_code == 200
 
@@ -96,7 +96,7 @@ class TestAnalyzeForecast:
 
     def test_backtest_present_with_forecast(self):
         response = client.post(
-            "/api/analyze", json={"ticker": "BMW", "forecast_horizon": 7}
+            "/api/analyze", json={"ticker": "AAPL", "forecast_horizon": 7}
         )
         backtest = response.json()["backtest"]
 
@@ -108,7 +108,7 @@ class TestAnalyzeForecast:
 
     def test_forecast_plot_present(self):
         response = client.post(
-            "/api/analyze", json={"ticker": "BMW", "forecast_horizon": 7}
+            "/api/analyze", json={"ticker": "AAPL", "forecast_horizon": 7}
         )
         plots = response.json()["plots"]
 
@@ -118,7 +118,7 @@ class TestAnalyzeForecast:
 
     def test_forecast_dates_are_after_historical(self):
         response = client.post(
-            "/api/analyze", json={"ticker": "BMW", "forecast_horizon": 7}
+            "/api/analyze", json={"ticker": "AAPL", "forecast_horizon": 7}
         )
         data = response.json()
 
@@ -128,7 +128,7 @@ class TestAnalyzeForecast:
 
     def test_confidence_intervals_bracket_forecast(self):
         response = client.post(
-            "/api/analyze", json={"ticker": "BMW", "forecast_horizon": 7}
+            "/api/analyze", json={"ticker": "AAPL", "forecast_horizon": 7}
         )
         forecast = response.json()["forecast"]
 
@@ -154,13 +154,13 @@ class TestAnalyzeValidation:
 
     def test_invalid_horizon(self):
         response = client.post(
-            "/api/analyze", json={"ticker": "BMW", "forecast_horizon": 15}
+            "/api/analyze", json={"ticker": "AAPL", "forecast_horizon": 15}
         )
         assert response.status_code == 422
 
     def test_horizon_too_small(self):
         response = client.post(
-            "/api/analyze", json={"ticker": "BMW", "forecast_horizon": 3}
+            "/api/analyze", json={"ticker": "AAPL", "forecast_horizon": 3}
         )
         assert response.status_code == 422
 
@@ -170,42 +170,42 @@ class TestAnalyzeCache:
 
     def test_second_request_is_cache_hit(self):
         # First request
-        r1 = client.post("/api/analyze", json={"ticker": "BMW"})
+        r1 = client.post("/api/analyze", json={"ticker": "AAPL"})
         assert r1.status_code == 200
 
         # Second request should be cache hit
-        r2 = client.post("/api/analyze", json={"ticker": "BMW"})
+        r2 = client.post("/api/analyze", json={"ticker": "AAPL"})
         assert r2.status_code == 200
         assert r2.json()["metadata"]["cache_hit"] is True
 
     def test_cached_response_is_faster(self):
         # Warm up cache
-        client.post("/api/analyze", json={"ticker": "BMW"})
+        client.post("/api/analyze", json={"ticker": "AAPL"})
 
         # Time a cache miss (different analysis params don't matter, same ticker = cache hit)
         start = time.time()
-        client.post("/api/analyze", json={"ticker": "BMW"})
+        client.post("/api/analyze", json={"ticker": "AAPL"})
         cached_duration = time.time() - start
 
         # Cached request should be under 5 seconds
         assert cached_duration < 5.0
 
     def test_results_consistent_across_cache(self):
-        r1 = client.post("/api/analyze", json={"ticker": "BMW"})
-        r2 = client.post("/api/analyze", json={"ticker": "BMW"})
+        r1 = client.post("/api/analyze", json={"ticker": "AAPL"})
+        r2 = client.post("/api/analyze", json={"ticker": "AAPL"})
 
         # Indicators should be identical
         assert r1.json()["indicators"] == r2.json()["indicators"]
 
 
 class TestAnalyzeDemoData:
-    """Test with preloaded BMW demo data."""
+    """Test with preloaded AAPL demo data."""
 
-    def test_bmw_demo_data_available(self):
-        response = client.post("/api/analyze", json={"ticker": "BMW"})
+    def test_aapl_demo_data_available(self):
+        response = client.post("/api/analyze", json={"ticker": "AAPL"})
         assert response.status_code == 200
 
-    def test_bmw_has_substantial_data(self):
-        response = client.post("/api/analyze", json={"ticker": "BMW"})
+    def test_aapl_has_substantial_data(self):
+        response = client.post("/api/analyze", json={"ticker": "AAPL"})
         meta = response.json()["metadata"]
-        assert meta["row_count"] > 100  # BMW.csv has decades of data
+        assert meta["row_count"] > 100  # AAPL.csv has decades of data

@@ -16,7 +16,7 @@ from app.data.alpha_vantage import (
 from app.data.cache import get_cached_data, store_data
 
 DEMO_TICKERS = [
-    "AAPL", "AMD", "AMZN", "BA", "BAC", "BMW", "CAT", "CVX", "DIS", "GOOGL",
+    "AAPL", "AMD", "AMZN", "BA", "BAC", "CAT", "CVX", "DIS", "GOOGL",
     "GS", "INTC", "JNJ", "JPM", "LMT", "META", "MSFT", "NEE", "NFLX", "NOC",
     "NVDA", "PFE", "TSLA", "UNH", "WMT", "XOM"
 ]

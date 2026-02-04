@@ -105,11 +105,11 @@ See `backend/scripts/README.md` for automation options (cron job).
 - Run `python scripts/update_demo_data.py` to fetch latest
 - Or manually download fresh CSV from NASDAQ
 
-## Alternative: Use BMW as Template
+## Alternative: Use AAPL as Template
 
 If you want to start with just one ticker:
 
-1. `backend/demo_data/BMW.csv` already exists with full history
+1. `backend/demo_data/AAPL.csv` already exists with full history
 2. Open it and see the format
 3. Download similar CSVs for other tickers from NASDAQ
 4. Follow the same column structure

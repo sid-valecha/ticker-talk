@@ -11,6 +11,7 @@ interface AnalysisFormProps {
   }>;
   loading: boolean;
   exampleQueries: string[];
+  availableTickers?: string[];
 }
 
 export default function AnalysisForm({
@@ -18,6 +19,7 @@ export default function AnalysisForm({
   onParseIntent,
   loading,
   exampleQueries,
+  availableTickers,
 }: AnalysisFormProps) {
   const [query, setQuery] = useState("");
   const [parsing, setParsing] = useState(false);
@@ -99,6 +101,12 @@ export default function AnalysisForm({
           <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
             You can use company names or ticker symbols
           </p>
+          {availableTickers && availableTickers.length > 0 && (
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 leading-relaxed">
+              Demo tickers available ({availableTickers.length}):{" "}
+              {availableTickers.join(", ")}
+            </p>
+          )}
         </div>
 
         {parsedIntent && !error && (

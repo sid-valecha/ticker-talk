@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import {
   analyzeStock,
+  getAvailableTickers,
   getExampleQueries,
   parseIntent,
   type AnalysisResponse,
@@ -15,6 +16,7 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [results, setResults] = useState<AnalysisResponse | null>(null);
   const [exampleQueries, setExampleQueries] = useState<string[]>([]);
+  const [availableTickers, setAvailableTickers] = useState<string[]>([]);
 
   useEffect(() => {
     getExampleQueries()
@@ -26,6 +28,12 @@ export default function Home() {
           "analyze Microsoft with 7-day forecast",
         ]),
       );
+  }, []);
+
+  useEffect(() => {
+    getAvailableTickers()
+      .then(setAvailableTickers)
+      .catch(() => setAvailableTickers([]));
   }, []);
 
   const handleParseIntent = async (query: string) => {
@@ -71,6 +79,7 @@ export default function Home() {
               onParseIntent={handleParseIntent}
               loading={loading}
               exampleQueries={exampleQueries}
+              availableTickers={availableTickers}
             />
           </div>
         </div>
