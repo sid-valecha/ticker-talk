@@ -25,6 +25,18 @@ export default function AnalysisResults({ data }: AnalysisResultsProps) {
         </div>
       </div>
 
+      {/* Explanation */}
+      {data.explanation && (
+        <div className="rounded-lg border border-blue-200 dark:border-blue-800 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950 dark:to-indigo-950 p-6 shadow-sm">
+          <h3 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50 mb-3">
+            Analysis Summary
+          </h3>
+          <div className="text-sm text-zinc-700 dark:text-zinc-300 whitespace-pre-line leading-relaxed">
+            {data.explanation}
+          </div>
+        </div>
+      )}
+
       {/* Key Indicators */}
       {indicators && (
         <div className="rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 p-6">
@@ -61,18 +73,6 @@ export default function AnalysisResults({ data }: AnalysisResultsProps) {
               label="30d Avg Volatility"
               value={`${(indicators.avg_volatility_30d * 100).toFixed(2)}%`}
             />
-          </div>
-        </div>
-      )}
-
-      {/* Explanation */}
-      {data.explanation && (
-        <div className="rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950 p-6">
-          <h3 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50 mb-3">
-            Analysis Summary
-          </h3>
-          <div className="text-sm text-zinc-700 dark:text-zinc-300 whitespace-pre-line leading-relaxed">
-            {data.explanation}
           </div>
         </div>
       )}
