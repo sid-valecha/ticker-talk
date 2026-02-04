@@ -222,3 +222,11 @@ yarn-error.log*
 # macOS
 .DS_Store
 current_plan.md
+backend/demo_data/*
+CODEX_HANDOFF_BACKUP.md
+CODEX_PROMPT.md
+PHASE_1B_UPDATE.md
+PROMPT_FOR_CODEX.txt
+HANDOFF_SUMMARY.md
+MOAT_ANALYSIS.md
+CODEX_HANDOFF.md

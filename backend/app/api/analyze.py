@@ -1,6 +1,7 @@
 """Stock analysis API endpoint."""
 
 from datetime import date, timedelta
+import logging
 import re
 import time
 from typing import Optional, Tuple
@@ -24,6 +25,8 @@ from app.data.alpha_vantage import (
 )
 from app.data.cache import get_cached_data, log_request, store_data
 from app.data.demo_data import load_demo_data
+from app.llm.explain import generate_explanation
+from app.llm.intent import get_example_queries, parse_intent
 from app.models.schemas import (
     AnalyzeRequest,
     AnalyzeResponse,
@@ -43,6 +46,35 @@ from app.plots.charts import (
 router = APIRouter()
 
 TICKER_PATTERN = re.compile(r"^[A-Z]{1,5}$")
+logger = logging.getLogger(__name__)
+
+
+@router.post("/parse_intent")
+def parse_natural_language_query(request: Request, body: dict) -> dict:
+    """Parse natural language query into structured request.
+
+    Example request:
+    {
+        "query": "forecast AAPL for 30 days"
+    }
+
+    Example responses:
+    Success: {"ticker": "AAPL", "forecast_horizon": 30}
+    Error: {"error": "Could not identify ticker symbol"}
+    """
+    query = body.get("query", "").strip()
+
+    if not query:
+        raise HTTPException(status_code=400, detail="Query field required")
+
+    result = parse_intent(query)
+    return result
+
+
+@router.get("/example_queries")
+def get_examples() -> dict:
+    """Return example queries for UI hints."""
+    return {"examples": get_example_queries()}
 
 
 def _cached_data_to_dataframe(cached_data: list) -> Optional[pd.DataFrame]:
@@ -60,6 +92,13 @@ def _cached_data_to_dataframe(cached_data: list) -> Optional[pd.DataFrame]:
     df["date"] = pd.to_datetime(df["date"])
     df.sort_values("date", inplace=True)
     df.set_index("date", inplace=True)
+
+    # Ensure numeric columns have correct dtypes (JSON round-trip loses types)
+    numeric_cols = ["open", "high", "low", "close", "adj_close", "volume"]
+    for col in numeric_cols:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+
     return df
 
 
@@ -198,6 +237,40 @@ def analyze_stock(request: Request, body: AnalyzeRequest) -> AnalyzeResponse:
     # Generate plots
     plots = _generate_plots(df_with_indicators, ticker, forecast_data=forecast_data_raw)
 
+    # Generate LLM explanation
+    explanation = None
+    try:
+        analysis_summary = {
+            "ticker": ticker,
+            "latest_price": indicator_summary["latest_price"],
+            "latest_return": indicator_summary["latest_return"],
+            "ma_20_latest": indicator_summary["ma_20_latest"],
+            "volatility_20_latest": indicator_summary["volatility_20_latest"],
+            "rsi_14_latest": indicator_summary["rsi_14_latest"],
+            "avg_return_30d": indicator_summary["avg_return_30d"],
+            "avg_volatility_30d": indicator_summary["avg_volatility_30d"],
+        }
+
+        if forecast_result is not None and backtest_result is not None:
+            analysis_summary.update(
+                {
+                    "forecast_horizon": forecast_result.horizon,
+                    "forecast_trend": forecast_result.trend,
+                    "forecast_start_price": indicator_summary["latest_price"],
+                    "forecast_end_price": forecast_result.forecast[-1],
+                    "forecast_lower_ci": forecast_result.lower_ci[-1],
+                    "forecast_upper_ci": forecast_result.upper_ci[-1],
+                    "backtest_mae": backtest_result.mae,
+                    "backtest_rmse": backtest_result.rmse,
+                    "backtest_mape": backtest_result.mape,
+                }
+            )
+
+        explanation = generate_explanation(analysis_summary)
+    except Exception as exc:  # noqa: BLE001 - explanation should never fail request
+        logger.warning("Explanation generation failed: %s", exc)
+        explanation = None
+
     # Log request metrics
     latency_ms = int((time.perf_counter() - start_time) * 1000)
     log_request("/api/analyze", ticker, cache_hit, latency_ms)
@@ -216,4 +289,5 @@ def analyze_stock(request: Request, body: AnalyzeRequest) -> AnalyzeResponse:
         forecast=forecast_result,
         backtest=backtest_result,
         plots=plots,
+        explanation=explanation,
     )
