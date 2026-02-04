@@ -10,4 +10,5 @@ statsmodels==0.14.6
 scikit-learn==1.8.0
 matplotlib==3.10.8
 slowapi==0.1.9
+openai==1.60.0
 httpx

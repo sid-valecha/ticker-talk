@@ -65,3 +65,4 @@ class AnalyzeResponse(BaseModel):
     forecast: Optional[ForecastResult] = None
     backtest: Optional[BacktestMetrics] = None
     plots: Optional[Plots] = None
+    explanation: Optional[str] = None

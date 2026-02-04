@@ -3,7 +3,8 @@
 import { useState, useEffect } from "react";
 import {
   analyzeStock,
-  getAvailableTickers,
+  getExampleQueries,
+  parseIntent,
   type AnalysisResponse,
 } from "@/app/lib/api";
 import AnalysisForm from "@/app/components/AnalysisForm";
@@ -13,13 +14,23 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [results, setResults] = useState<AnalysisResponse | null>(null);
-  const [availableTickers, setAvailableTickers] = useState<string[]>([]);
+  const [exampleQueries, setExampleQueries] = useState<string[]>([]);
 
   useEffect(() => {
-    getAvailableTickers()
-      .then(setAvailableTickers)
-      .catch(() => setAvailableTickers([]));
+    getExampleQueries()
+      .then(setExampleQueries)
+      .catch(() =>
+        setExampleQueries([
+          "forecast AAPL for 30 days",
+          "show me Tesla",
+          "analyze Microsoft with 7-day forecast",
+        ]),
+      );
   }, []);
+
+  const handleParseIntent = async (query: string) => {
+    return await parseIntent(query);
+  };
 
   const handleSubmit = async (ticker: string, forecastHorizon?: 7 | 30) => {
     setLoading(true);
@@ -48,7 +59,7 @@ export default function Home() {
             Ticker Talk
           </h1>
           <p className="text-zinc-600 dark:text-zinc-400">
-            Stock analysis with technical indicators and forecasting
+            Ask me about any stock in natural language
           </p>
         </header>
 
@@ -57,8 +68,9 @@ export default function Home() {
           <div className="rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 p-6">
             <AnalysisForm
               onSubmit={handleSubmit}
+              onParseIntent={handleParseIntent}
               loading={loading}
-              availableTickers={availableTickers}
+              exampleQueries={exampleQueries}
             />
           </div>
         </div>

@@ -15,7 +15,11 @@ from app.data.alpha_vantage import (
 )
 from app.data.cache import get_cached_data, store_data
 
-DEMO_TICKERS = ["AAPL", "MSFT", "GOOGL", "AMZN", "META", "TSLA", "NVDA", "NFLX", "AMD", "INTC"]
+DEMO_TICKERS = [
+    "AAPL", "AMD", "AMZN", "BA", "BAC", "BMW", "CAT", "CVX", "DIS", "GOOGL",
+    "GS", "INTC", "JNJ", "JPM", "LMT", "META", "MSFT", "NEE", "NFLX", "NOC",
+    "NVDA", "PFE", "TSLA", "UNH", "WMT", "XOM"
+]
 DEMO_DATA_DIR_ENV = "TICKER_TALK_DEMO_DATA_DIR"
 
 
@@ -33,7 +37,27 @@ def load_demo_data(ticker: str) -> Optional[pd.DataFrame]:
         return None
 
     df = pd.read_csv(path)
-    df.columns = [col.strip().lower() for col in df.columns]
+
+    # Normalize column names: lowercase and strip spaces
+    df.columns = [col.strip().lower().replace("/", "_") for col in df.columns]
+
+    # Handle NASDAQ format: "close/last" -> "close_last"
+    column_mapping = {
+        "close_last": "close",
+        "date": "date",
+    }
+    df.rename(columns=column_mapping, inplace=True)
+
+    # Clean ALL numeric columns (prices and volume)
+    numeric_cols = ["open", "high", "low", "close", "volume"]
+    for col in numeric_cols:
+        if col in df.columns:
+            # Convert to string first (in case it's already partially numeric)
+            df[col] = df[col].astype(str)
+            # Remove dollar signs, commas, and whitespace
+            df[col] = df[col].str.replace("$", "", regex=False).str.replace(",", "", regex=False).str.strip()
+            # Convert to numeric
+            df[col] = pd.to_numeric(df[col], errors="coerce")
 
     # Required columns
     required = ["date", "open", "high", "low", "close", "volume"]
@@ -42,9 +66,17 @@ def load_demo_data(ticker: str) -> Optional[pd.DataFrame]:
 
     # Use adj_close if available, otherwise fall back to close
     if "adj_close" not in df.columns:
-        df["adj_close"] = df["close"]
+        df["adj_close"] = df["close"].copy()
+    else:
+        # Ensure adj_close is also numeric if it exists
+        df["adj_close"] = df["adj_close"].astype(str).str.replace("$", "", regex=False).str.replace(",", "", regex=False).str.strip()
+        df["adj_close"] = pd.to_numeric(df["adj_close"], errors="coerce")
 
-    df = df[required + ["adj_close"]]
+    # Select columns and ensure all price columns are float
+    df = df[required + ["adj_close"]].copy()
+    for col in ["open", "high", "low", "close", "adj_close"]:
+        df[col] = df[col].astype(float)
+
     df["date"] = pd.to_datetime(df["date"])
     df.sort_values("date", inplace=True)
     df.set_index("date", inplace=True)
