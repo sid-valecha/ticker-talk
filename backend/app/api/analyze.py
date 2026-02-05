@@ -1,6 +1,6 @@
 """Stock analysis API endpoint."""
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 import logging
 import re
 import time
@@ -178,8 +178,12 @@ def analyze_stock(request: Request, body: AnalyzeRequest) -> AnalyzeResponse:
     if not TICKER_PATTERN.match(ticker):
         raise HTTPException(status_code=400, detail="Ticker must be 1-5 uppercase letters")
 
-    # Check cache first
-    cached = get_cached_data(ticker, ttl_hours=settings.CACHE_TTL_HOURS)
+    # Check cache first (allow stale for refresh decisions)
+    cached = get_cached_data(
+        ticker,
+        ttl_hours=settings.CACHE_TTL_HOURS,
+        allow_stale=True,
+    )
 
     if cached:
         # Reconstruct DataFrame from cached data
@@ -191,6 +195,34 @@ def analyze_stock(request: Request, body: AnalyzeRequest) -> AnalyzeResponse:
             row_count = cached["row_count"]
             min_date = cached["min_date"]
             max_date = cached["max_date"]
+
+            # Refresh if cache is older than refresh threshold
+            refresh_needed = False
+            try:
+                fetched_dt = datetime.fromisoformat(fetched_at)
+                age_hours = (datetime.now() - fetched_dt).total_seconds() / 3600
+                refresh_needed = age_hours > settings.CACHE_REFRESH_HOURS
+            except ValueError:
+                refresh_needed = True
+
+            if refresh_needed and settings.ALPHA_VANTAGE_API_KEY:
+                try:
+                    api_df = fetch_daily_adjusted(ticker)
+                    # Merge with cached data, prefer newest values
+                    combined = pd.concat([df, api_df]).sort_index()
+                    combined = combined[~combined.index.duplicated(keep="last")]
+
+                    stored = store_data(ticker, combined, source="alpha_vantage")
+                    df = combined
+                    cache_hit = False
+                    source = stored["source"]
+                    fetched_at = stored["fetched_at"]
+                    row_count = stored["row_count"]
+                    min_date = stored["min_date"]
+                    max_date = stored["max_date"]
+                except (AlphaVantageRateLimit, AlphaVantageAPIError, AlphaVantageInvalidTicker):
+                    # Keep cached data if refresh fails
+                    pass
         else:
             # Invalid cached data, treat as cache miss
             cached = None
