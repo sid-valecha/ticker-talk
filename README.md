@@ -1,5 +1,9 @@
 # TickerTalk - Talk to your stocks!
 
+
+
+![Ticker Talk UI](image.png)
+
 Natural-language stock analysis that turns queries like "forecast AAPL for 30 days" into charts, indicators, forecasts, and AI-generated explanations.
 
 ## Live Demo
@@ -30,10 +34,6 @@ The app ships with a curated set of demo tickers (CSV) so it runs without extern
 - Backend: FastAPI, pandas, statsmodels, SQLite, matplotlib
 - Frontend: Next.js (App Router), TypeScript, Tailwind CSS
 - LLM: Groq or OpenAI (provider-agnostic client)
-
-## Screenshots
-
-![Ticker Talk UI](frontend/public/screenshots/ticker-talk.png)
 
 ## API Endpoints
 
