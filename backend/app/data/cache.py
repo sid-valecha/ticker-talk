@@ -133,7 +133,11 @@ def store_data(ticker: str, df: pd.DataFrame, source: str) -> dict[str, Any]:
     }
 
 
-def get_cached_data(ticker: str, ttl_hours: int = 24) -> Optional[dict[str, Any]]:
+def get_cached_data(
+    ticker: str,
+    ttl_hours: int = 24,
+    allow_stale: bool = False,
+) -> Optional[dict[str, Any]]:
     db_path = get_db_path()
 
     if not db_path.exists():
@@ -155,7 +159,7 @@ def get_cached_data(ticker: str, ttl_hours: int = 24) -> Optional[dict[str, Any]
         return None
 
     data_json, fetched_at, row_count, min_date, max_date, source = row
-    if not is_cache_valid(fetched_at, ttl_hours):
+    if not is_cache_valid(fetched_at, ttl_hours) and not allow_stale:
         return None
 
     try:
