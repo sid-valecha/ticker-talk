@@ -1,61 +1,57 @@
-# Ticker-Talk
+# TickerTalk - Talk to your stocks!
 
-Natural-language stock analysis application.
+Natural-language stock analysis that turns queries like "forecast AAPL for 30 days" into charts, indicators, forecasts, and AI-generated explanations.
 
-## Overview
+## Live Demo
 
-Ticker-Talk is an app where:
-- Python computes all metrics deterministically
-- An LLM is used only for explanation
-- Real market data is cached aggressively
-- Forecasting is responsible and backtested
+- Demo: `https://sidvalecha.com/ticker-talk`
 
-## Current State (Scaffold Only)
+## What It Does
 
-This repository contains only the base scaffold. The following features are **not yet implemented**:
-- Data fetching and caching
-- Technical indicators and metrics
-- Forecasting models
-- LLM integration for explanations
-- Visualizations
+- Parses natural-language queries into structured analysis requests
+- Computes technical indicators deterministically in Python
+- Runs ARIMA forecasts with walk-forward backtesting
+- Generates charts and an AI explanation grounded in computed metrics
+- Caches market data to reduce API calls
 
-## Project Structure
+## Architecture Highlights
 
-```
-ticker-talk/
-├── backend/           # FastAPI backend
-│   ├── app/
-│   │   ├── main.py    # API entry point (/health endpoint)
-│   │   ├── config.py  # Environment configuration
-│   │   ├── data/      # (empty) Data fetching module
-│   │   ├── compute/   # (empty) Metrics module
-│   │   ├── plots/     # (empty) Visualization module
-│   │   └── llm/       # (empty) LLM integration module
-│   └── requirements.txt
-├── frontend/          # Next.js frontend
-│   └── app/
-│       └── page.tsx   # Single page calling /health
-└── .env.example
-```
+- Deterministic compute layer (no LLM math)
+- Guardrailed LLM explanations (no trading advice)
+- SQLite caching with TTL to reduce upstream calls
+- Graceful fallback when LLM is unavailable
 
-## Prerequisites
+## Demo Data
 
-- Python 3.10+ with conda
-- Node.js 18+
-- Conda environment `ttalk`
+The app ships with a curated set of demo tickers (CSV) so it runs without external API calls. If you query a ticker outside the demo set, results depend on API availability.
 
-## Running Locally
+## Tech Stack
+
+- Backend: FastAPI, pandas, statsmodels, SQLite, matplotlib
+- Frontend: Next.js (App Router), TypeScript, Tailwind CSS
+- LLM: Groq or OpenAI (provider-agnostic client)
+
+## Screenshots
+
+![Ticker Talk UI](frontend/public/screenshots/ticker-talk.png)
+
+## API Endpoints
+
+- `GET /health` — health check
+- `POST /api/analyze` — main analysis endpoint
+- `POST /api/parse_intent` — parse natural language query
+- `GET /api/example_queries` — example prompts for the UI
+- `GET /api/metrics` — usage metrics (requires API key if enabled)
+
+## Local Development
 
 ### Backend
 
 ```bash
-conda activate ttalk
 cd backend
 pip install -r requirements.txt
 uvicorn app.main:app --reload
 ```
-
-Backend runs on http://localhost:8000
 
 ### Frontend
 
@@ -65,13 +61,17 @@ npm install
 npm run dev
 ```
 
-Frontend runs on http://localhost:3000
+## Environment Variables
 
-## API Endpoints
+- `ALPHA_VANTAGE_API_KEY` (optional if demo data is present)
+- `GROQ_API_KEY` or `OPENAI_API_KEY` (LLM explanations)
+- `LLM_PRIMARY_PROVIDER` and `LLM_FALLBACK_PROVIDER`
+- `LLM_TIMEOUT_SECONDS`
+- `METRICS_API_KEY` (optional; locks `/api/metrics`)
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/health` | GET | Health check, returns `{"status": "ok"}` |
+## Disclaimer
+
+This project is for educational purposes only and is not financial advice.
 
 ## License
 
