@@ -50,6 +50,7 @@ logger = logging.getLogger(__name__)
 
 
 @router.post("/parse_intent")
+@limiter.limit("20/minute")
 def parse_natural_language_query(request: Request, body: dict) -> dict:
     """Parse natural language query into structured request.
 
@@ -66,6 +67,8 @@ def parse_natural_language_query(request: Request, body: dict) -> dict:
 
     if not query:
         raise HTTPException(status_code=400, detail="Query field required")
+    if len(query) > 500:
+        raise HTTPException(status_code=400, detail="Query too long (max 500 characters)")
 
     result = parse_intent(query)
     return result

@@ -46,13 +46,17 @@ def _call_provider(
         api_key = settings.GROQ_API_KEY
         if not api_key:
             raise ValueError("GROQ_API_KEY not set")
-        client = OpenAI(api_key=api_key, base_url="https://api.groq.com/openai/v1")
+        client = OpenAI(
+            api_key=api_key,
+            base_url="https://api.groq.com/openai/v1",
+            timeout=settings.LLM_TIMEOUT_SECONDS,
+        )
         model = settings.GROQ_MODEL
     elif provider == "openai":
         api_key = settings.OPENAI_API_KEY
         if not api_key:
             raise ValueError("OPENAI_API_KEY not set")
-        client = OpenAI(api_key=api_key)
+        client = OpenAI(api_key=api_key, timeout=settings.LLM_TIMEOUT_SECONDS)
         model = settings.OPENAI_MODEL
     else:
         raise ValueError(f"Unsupported LLM provider: {provider}")

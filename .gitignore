@@ -219,6 +219,9 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
+# Claude Code local settings
+.claude/settings.local.json
+
 # macOS
 .DS_Store
 current_plan.md
@@ -230,3 +233,4 @@ PROMPT_FOR_CODEX.txt
 HANDOFF_SUMMARY.md
 MOAT_ANALYSIS.md
 CODEX_HANDOFF.md
+../.env

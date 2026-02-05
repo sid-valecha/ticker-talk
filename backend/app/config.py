@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     GROQ_MODEL: str = "llama-3.3-70b-versatile"
     LLM_MAX_TOKENS: int = 500
     LLM_TEMPERATURE: float = 0.3
+    LLM_TIMEOUT_SECONDS: int = 30
+    METRICS_API_KEY: str = ""
 
     model_config = ConfigDict(
         env_file=".env",

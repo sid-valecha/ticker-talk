@@ -1,14 +1,22 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException, Request
 import sqlite3
 
 from app.data.cache import get_db_path
+from app.config import settings
 
 router = APIRouter()
 
 
 @router.get("/metrics")
-def get_metrics():
+def get_metrics(request: Request):
     """Return usage metrics from SQLite."""
+    if not settings.METRICS_API_KEY:
+        raise HTTPException(status_code=404, detail="Not found")
+
+    provided_key = request.headers.get("x-metrics-key")
+    if provided_key != settings.METRICS_API_KEY:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
     db_path = get_db_path()
 
     with sqlite3.connect(db_path) as conn:
