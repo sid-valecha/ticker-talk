@@ -171,6 +171,8 @@ def parse_intent(query: str) -> Dict[str, Any]:
     """
     if not query or not query.strip():
         return {"error": "Please enter a stock query"}
+    if len(query) > 500:
+        return {"error": "Query too long (max 500 characters)"}
 
     candidates = _extract_ticker_candidates(query)
     if len(candidates) > 1:

@@ -21,6 +21,7 @@ export default function AnalysisForm({
   exampleQueries,
   availableTickers,
 }: AnalysisFormProps) {
+  const MAX_QUERY_LENGTH = 500;
   const [query, setQuery] = useState("");
   const [parsing, setParsing] = useState(false);
   const [parsedIntent, setParsedIntent] = useState<{
@@ -31,6 +32,10 @@ export default function AnalysisForm({
 
   const submitQuery = async (queryText: string) => {
     if (!queryText.trim() || parsing || loading) return;
+    if (queryText.length > MAX_QUERY_LENGTH) {
+      setError("Query too long (max 500 characters).");
+      return;
+    }
 
     setError(null);
     setParsing(true);
@@ -94,6 +99,7 @@ export default function AnalysisForm({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Try: 'forecast AAPL for 30 days'"
+            maxLength={MAX_QUERY_LENGTH}
             className="w-full px-4 py-3 border border-zinc-300/80 dark:border-zinc-600/80 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-transparent bg-white/90 dark:bg-zinc-900 text-gray-900 dark:text-gray-100 shadow-sm"
             disabled={loading || parsing}
             required
