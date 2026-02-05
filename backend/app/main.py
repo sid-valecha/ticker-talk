@@ -63,6 +63,13 @@ def on_startup() -> None:
         logger.warning(
             "ALPHA_VANTAGE_API_KEY not set. API fetching disabled, demo data only."
         )
+    logger.info(
+        "LLM config: primary=%s fallback=%s groq_key_set=%s openai_key_set=%s",
+        settings.LLM_PRIMARY_PROVIDER,
+        settings.LLM_FALLBACK_PROVIDER,
+        bool(settings.GROQ_API_KEY),
+        bool(settings.OPENAI_API_KEY),
+    )
 
     init_db()
     preload_demo_data_if_needed()

@@ -26,9 +26,10 @@ def call_llm_with_fallback(
         if not _should_fallback(exc) or fallback == primary:
             raise
         logger.warning(
-            "Primary LLM provider '%s' failed (%s); trying fallback '%s'.",
+            "Primary LLM provider '%s' failed (%s: %s); trying fallback '%s'.",
             primary,
             exc.__class__.__name__,
+            str(exc),
             fallback,
         )
         return _call_provider(fallback, messages, max_tokens)
