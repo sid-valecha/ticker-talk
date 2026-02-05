@@ -69,13 +69,23 @@ export default function Home() {
       </div>
       <div className="relative max-w-5xl mx-auto px-4 py-10">
         {/* Header */}
-        <header className="text-center mb-8">
-          <h1 className="text-4xl sm:text-5xl font-bold text-zinc-900 dark:text-zinc-50 mb-2 tracking-tight">
-            Ticker Talk
-          </h1>
-          <p className="text-zinc-600 dark:text-zinc-400">
-            Ask me about any stock in natural language
-          </p>
+        <header className="mb-8">
+          <div className="flex justify-start mb-6">
+            <a
+              href="https://sidvalecha.com"
+              className="inline-flex items-center gap-2 rounded-full border border-zinc-200/80 bg-white/80 px-4 py-2 text-sm font-medium text-zinc-700 shadow-sm backdrop-blur transition hover:border-zinc-300 hover:text-zinc-900 dark:border-zinc-700/80 dark:bg-zinc-900/70 dark:text-zinc-300 dark:hover:text-zinc-100"
+            >
+              ← Back to home
+            </a>
+          </div>
+          <div className="text-center">
+            <h1 className="text-4xl sm:text-5xl font-bold text-zinc-900 dark:text-zinc-50 mb-2 tracking-tight">
+              TickerTalk
+            </h1>
+            <p className="text-zinc-600 dark:text-zinc-400">
+              Ask me about any stock in natural language
+            </p>
+          </div>
         </header>
 
         {/* Input */}

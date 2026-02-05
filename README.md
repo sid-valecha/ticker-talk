@@ -8,7 +8,7 @@ Natural-language stock analysis that turns queries like "forecast AAPL for 30 da
 
 ## Live Demo
 
-- Demo: `https://sidvalecha.com/ticker-talk`
+- Demo: [https://sidvalecha.com/ticker-talk](https://sidvalecha.com/ticker-talk)
 
 ## What It Does
 
