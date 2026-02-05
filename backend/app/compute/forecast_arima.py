@@ -12,6 +12,19 @@ import pandas as pd
 from statsmodels.tsa.arima.model import ARIMA
 
 
+def _prepare_series(series: pd.Series) -> pd.Series:
+    """Ensure datetime index and set frequency if inferable."""
+    s = series.copy()
+    if not isinstance(s.index, pd.DatetimeIndex):
+        s.index = pd.to_datetime(s.index)
+
+    inferred = pd.infer_freq(s.index)
+    if inferred:
+        s = s.asfreq(inferred)
+
+    return s
+
+
 def fit_arima(series: pd.Series, order: tuple = (5, 1, 0)) -> Any:
     """Fit ARIMA model to a price series.
 
@@ -23,6 +36,8 @@ def fit_arima(series: pd.Series, order: tuple = (5, 1, 0)) -> Any:
         Fitted ARIMA model results
     """
     # Suppress convergence warnings for cleaner output
+    series = _prepare_series(series)
+
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore")
         model = ARIMA(series, order=order)
@@ -54,10 +69,11 @@ def forecast_arima(
     if len(series) < 60:
         raise ValueError("Need at least 60 data points for reliable ARIMA forecasting")
 
+    series = _prepare_series(series)
     fitted = fit_arima(series, order)
     alpha = 1 - confidence
 
-    forecast_result = fitted.get_forecast(steps=horizon, alpha=alpha)
+    forecast_result = fitted.get_forecast(steps=horizon)
     predicted = forecast_result.predicted_mean
     conf_int = forecast_result.conf_int(alpha=alpha)
 

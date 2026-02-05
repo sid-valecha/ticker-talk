@@ -131,7 +131,7 @@ _COMPANY_PATTERNS: list[tuple[re.Pattern[str], str]] = [
 ]
 
 _FORECAST_TERMS = re.compile(r"\bforecast\b|\bpredict\b|\bprediction\b", re.IGNORECASE)
-_HORIZON_PATTERN = re.compile(r"\b(7|30)\s*-?\s*day(s)?\b", re.IGNORECASE)
+_HORIZON_PATTERN = re.compile(r"\b(7|30)\s*-?\s*(day|days|d)?\b", re.IGNORECASE)
 
 
 def _extract_ticker_candidates(query: str) -> Set[str]:
