@@ -65,7 +65,7 @@ def _build_user_prompt(summary: Dict[str, Any]) -> str:
                 ),
                 f"Backtest MAE: {_format_price(summary.get('backtest_mae'))}",
                 f"Backtest RMSE: {_format_price(summary.get('backtest_rmse'))}",
-                f"Backtest MAPE: {_format_pct(summary.get('backtest_mape'))}",
+                f"Backtest MAPE: {_format_pct_value(summary.get('backtest_mape'))}",
             ]
         )
 
@@ -98,7 +98,7 @@ def _fallback_explanation(summary: Dict[str, Any]) -> str:
         upper_ci = _format_price(summary.get("forecast_upper_ci"))
         mae = _format_price(summary.get("backtest_mae"))
         rmse = _format_price(summary.get("backtest_rmse"))
-        mape = _format_pct(summary.get("backtest_mape"))
+        mape = _format_pct_value(summary.get("backtest_mape"))
 
         paragraph_2 = (
             f"The {horizon}-day ARIMA forecast suggests a {trend} trend toward {end_price}, "
@@ -131,6 +131,16 @@ def _format_pct(value: Any) -> str:
         return "n/a"
     try:
         return f"{float(value) * 100:.2f}%"
+    except (TypeError, ValueError):
+        return "n/a"
+
+
+def _format_pct_value(value: Any) -> str:
+    """Format value already in percentage points (e.g., MAPE)."""
+    if value is None:
+        return "n/a"
+    try:
+        return f"{float(value):.2f}%"
     except (TypeError, ValueError):
         return "n/a"
 
