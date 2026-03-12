@@ -2,124 +2,48 @@
 
 ## Overview
 
-The `update_demo_data.py` script keeps demo ticker CSVs up-to-date by fetching the latest data from Alpha Vantage.
+`update_demo_data.py` refreshes demo CSVs from Alpha Vantage and clears cache entries for updated tickers.
 
-## What It Does
-
-1. Reads each demo CSV file (AAPL, MSFT, GOOGL, etc.)
-2. Checks the latest date in each file
-3. Fetches new data from Alpha Vantage API
-4. Appends new rows to the CSV
-5. Clears the cache so fresh data is loaded
+Default mode is **rotating batch refresh** (5 tickers/day), which is safer for Alpha Vantage free-tier limits.
 
 ## Usage
 
-### Manual Run (Recommended)
-
 ```bash
 cd backend
-conda activate ttalk  # or source venv/bin/activate
-python scripts/update_demo_data.py
+python3 scripts/update_demo_data.py
 ```
 
-Run this once per day to keep data fresh.
-
-### Automated (Optional)
-
-Add to your crontab to run daily at 5 AM:
+### Modes
 
 ```bash
-# Edit crontab
-crontab -e
+# Default: rotate through demo tickers in daily batches
+python3 scripts/update_demo_data.py --mode rotate --batch-size 5
 
-# Add this line:
-0 5 * * * cd /path/to/ticker-talk/backend && /path/to/conda/envs/ttalk/bin/python scripts/update_demo_data.py >> logs/update.log 2>&1
+# Refresh all demo tickers (slow; uses near full daily quota)
+python3 scripts/update_demo_data.py --mode all
+
+# Refresh one ticker
+python3 scripts/update_demo_data.py --mode ticker --ticker AAPL
 ```
 
-## Initial Setup
+## Key behavior
 
-Before running the script, you need to download initial CSV files for the demo tickers.
+- Uses `TIME_SERIES_DAILY_ADJUSTED` via the shared Alpha Vantage client.
+- Writes normalized CSV columns: `date, open, high, low, close, adj_close, volume`.
+- Clears only cache rows for tickers actually updated.
+- Sleeps between calls (default `12s`) to respect 5 calls/minute.
 
-### Download from NASDAQ
+## Scheduling recommendation
 
-1. Go to https://www.nasdaq.com/market-activity/stocks/[TICKER]/historical
-   - Replace `[TICKER]` with: aapl, msft, googl, amzn, meta, tsla, nvda, nflx, amd, intc
+Run once daily:
 
-2. Select "MAX" timeframe (10 years)
-
-3. Click "Download Data"
-
-4. Rename downloaded file to `[TICKER].csv` (uppercase)
-
-5. Move to `backend/demo_data/`
-
-Repeat for all 10 tickers.
-
-### CSV Format Requirements
-
-The downloaded NASDAQ CSVs should have these columns:
-- Date
-- Open
-- High
-- Low
-- Close
-- Volume
-
-**Note:** `Adj_Close` is not needed - the loader will use `Close` if `Adj_Close` is missing.
-
-## What Happens Next
-
-Once you have the initial CSV files:
-
-1. The backend will preload them on startup (see `DEMO_TICKERS` in `app/data/demo_data.py`)
-2. Users can analyze these tickers immediately (no API calls needed)
-3. Run `update_demo_data.py` daily to append the latest day's data
-4. The 25/day Alpha Vantage limit is conserved for updates only
-
-## Troubleshooting
-
-**"No API key configured"**
-- Set `ALPHA_VANTAGE_API_KEY` in `backend/.env`
-
-**"Rate limited"**
-- You've hit the 5 calls/minute limit
-- Wait 60 seconds and try again
-- Consider running updates at off-peak hours
-
-**"CSV doesn't exist yet"**
-- Download the initial CSV files from NASDAQ (see above)
-
-**"No data returned"**
-- Check if the ticker symbol is correct
-- Verify your API key is valid
-
-## API Limits
-
-Alpha Vantage free tier:
-- **25 calls per day**
-- **5 calls per minute**
-
-With 10 demo tickers, one daily update uses 10 API calls, leaving 15 for live queries.
-
-## Example Output
-
+```bash
+0 5 * * * cd /path/to/ticker-talk/backend && /usr/bin/python3 scripts/update_demo_data.py --mode rotate --batch-size 5 >> logs/update.log 2>&1
 ```
-============================================================
-Ticker Talk Demo Data Update - 2026-02-03 05:00:00
-============================================================
 
-AAPL:
-  Latest date in AAPL.csv: 2026-02-02
-  + Adding 1 new row(s) to AAPL.csv
+This refreshes all 25 demo tickers over ~5 days while leaving API headroom for live requests.
 
-MSFT:
-  Latest date in MSFT.csv: 2026-02-02
-  + Adding 1 new row(s) to MSFT.csv
+## Requirements
 
-...
-
-============================================================
-Updated 10/10 tickers
-✓ Cache cleared
-============================================================
-```
+- `ALPHA_VANTAGE_API_KEY` must be set.
+- Demo CSV files must already exist in `backend/demo_data/`.

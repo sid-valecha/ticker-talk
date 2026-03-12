@@ -85,13 +85,21 @@ def load_demo_data(ticker: str) -> Optional[pd.DataFrame]:
 
 def preload_demo_data_if_needed() -> None:
     for ticker in DEMO_TICKERS:
-        cached = get_cached_data(ticker, ttl_hours=settings.CACHE_TTL_HOURS)
-        if cached:
-            continue
-
+        cached = get_cached_data(
+            ticker,
+            ttl_hours=settings.CACHE_TTL_HOURS,
+            allow_stale=True,
+        )
         demo_df = load_demo_data(ticker)
         if demo_df is not None:
+            demo_max_date = demo_df.index.max().strftime("%Y-%m-%d")
+            cached_max_date = cached.get("max_date") if cached else None
+            if cached_max_date and cached_max_date >= demo_max_date:
+                continue
             store_data(ticker, demo_df, source="demo")
+            continue
+
+        if cached:
             continue
 
         if settings.ALPHA_VANTAGE_API_KEY:

@@ -1,6 +1,6 @@
 """Stock analysis API endpoint."""
 
-from datetime import date, datetime, timedelta
+from datetime import datetime
 import logging
 import re
 import time
@@ -25,6 +25,7 @@ from app.data.alpha_vantage import (
 )
 from app.data.cache import get_cached_data, log_request, store_data
 from app.data.demo_data import load_demo_data
+from app.data.freshness import stale_business_days
 from app.llm.explain import generate_explanation
 from app.llm.intent import get_example_queries, parse_intent
 from app.models.schemas import (
@@ -178,6 +179,10 @@ def analyze_stock(request: Request, body: AnalyzeRequest) -> AnalyzeResponse:
     if not TICKER_PATTERN.match(ticker):
         raise HTTPException(status_code=400, detail="Ticker must be 1-5 uppercase letters")
 
+    refresh_attempted = False
+    refresh_succeeded = False
+    refresh_reason = "not_stale"
+
     # Check cache first (allow stale for refresh decisions)
     cached = get_cached_data(
         ticker,
@@ -196,33 +201,53 @@ def analyze_stock(request: Request, body: AnalyzeRequest) -> AnalyzeResponse:
             min_date = cached["min_date"]
             max_date = cached["max_date"]
 
-            # Refresh if cache is older than refresh threshold
-            refresh_needed = False
-            try:
-                fetched_dt = datetime.fromisoformat(fetched_at)
-                age_hours = (datetime.now() - fetched_dt).total_seconds() / 3600
-                refresh_needed = age_hours > settings.CACHE_REFRESH_HOURS
-            except ValueError:
-                refresh_needed = True
+            stale_days = stale_business_days(
+                max_date,
+                now=datetime.now(),
+                lag_days=settings.MARKET_DATA_LAG_DAYS,
+            )
+            refresh_needed = (
+                stale_days is None
+                or stale_days > settings.MARKET_STALE_GRACE_BUSINESS_DAYS
+            )
 
-            if refresh_needed and settings.ALPHA_VANTAGE_API_KEY:
-                try:
-                    api_df = fetch_daily_adjusted(ticker)
-                    # Merge with cached data, prefer newest values
-                    combined = pd.concat([df, api_df]).sort_index()
-                    combined = combined[~combined.index.duplicated(keep="last")]
+            if refresh_needed:
+                refresh_reason = "stale_market_date" if stale_days is not None else "invalid_max_date"
+                if not settings.ALPHA_VANTAGE_API_KEY:
+                    refresh_reason = "missing_api_key"
+                else:
+                    refresh_attempted = True
+                    logger.info(
+                        "Refreshing stale ticker=%s source=%s stale_business_days=%s",
+                        ticker,
+                        source,
+                        stale_days,
+                    )
+                    try:
+                        api_df = fetch_daily_adjusted(ticker)
+                        # Merge with cached data, prefer newest values
+                        combined = pd.concat([df, api_df]).sort_index()
+                        combined = combined[~combined.index.duplicated(keep="last")]
 
-                    stored = store_data(ticker, combined, source="alpha_vantage")
-                    df = combined
-                    cache_hit = False
-                    source = stored["source"]
-                    fetched_at = stored["fetched_at"]
-                    row_count = stored["row_count"]
-                    min_date = stored["min_date"]
-                    max_date = stored["max_date"]
-                except (AlphaVantageRateLimit, AlphaVantageAPIError, AlphaVantageInvalidTicker):
-                    # Keep cached data if refresh fails
-                    pass
+                        stored = store_data(ticker, combined, source="alpha_vantage")
+                        df = combined
+                        cache_hit = False
+                        source = stored["source"]
+                        fetched_at = stored["fetched_at"]
+                        row_count = stored["row_count"]
+                        min_date = stored["min_date"]
+                        max_date = stored["max_date"]
+                        refresh_succeeded = True
+                        refresh_reason = "refreshed_from_alpha_vantage"
+                    except AlphaVantageRateLimit as exc:
+                        refresh_reason = "rate_limited"
+                        logger.warning("Refresh rate-limited for %s: %s", ticker, exc)
+                    except AlphaVantageInvalidTicker as exc:
+                        refresh_reason = "invalid_ticker"
+                        logger.warning("Refresh invalid ticker for %s: %s", ticker, exc)
+                    except AlphaVantageAPIError as exc:
+                        refresh_reason = "api_error"
+                        logger.warning("Refresh API error for %s: %s", ticker, exc)
         else:
             # Invalid cached data, treat as cache miss
             cached = None
@@ -231,14 +256,25 @@ def analyze_stock(request: Request, body: AnalyzeRequest) -> AnalyzeResponse:
         # Fetch from API or demo data
         source = "alpha_vantage"
         df = None
-        try:
-            df = fetch_daily_adjusted(ticker)
-        except AlphaVantageRateLimit:
-            df = load_demo_data(ticker)
-            source = "demo" if df is not None else source
-        except AlphaVantageInvalidTicker as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-        except AlphaVantageAPIError:
+        refresh_reason = "cache_miss"
+        if settings.ALPHA_VANTAGE_API_KEY:
+            refresh_attempted = True
+            try:
+                df = fetch_daily_adjusted(ticker)
+                refresh_succeeded = True
+                refresh_reason = "cache_miss_api_fetch"
+            except AlphaVantageRateLimit as exc:
+                refresh_reason = "rate_limited"
+                logger.warning("Cache miss API rate-limited for %s: %s", ticker, exc)
+            except AlphaVantageInvalidTicker as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+            except AlphaVantageAPIError as exc:
+                refresh_reason = "api_error"
+                logger.warning("Cache miss API error for %s: %s", ticker, exc)
+        else:
+            refresh_reason = "missing_api_key"
+
+        if df is None:
             df = load_demo_data(ticker)
             source = "demo" if df is not None else source
 
@@ -255,6 +291,22 @@ def analyze_stock(request: Request, body: AnalyzeRequest) -> AnalyzeResponse:
         row_count = stored["row_count"]
         min_date = stored["min_date"]
         max_date = stored["max_date"]
+
+    stale_days_final = stale_business_days(
+        max_date,
+        now=datetime.now(),
+        lag_days=settings.MARKET_DATA_LAG_DAYS,
+    )
+    stale_by_days = stale_days_final if stale_days_final is not None else 0
+    if stale_by_days > settings.MARKET_STALE_GRACE_BUSINESS_DAYS and not refresh_succeeded:
+        logger.warning(
+            "STALE_DATA_SIGNAL ticker=%s max_date=%s stale_business_days=%s reason=%s source=%s",
+            ticker,
+            max_date,
+            stale_by_days,
+            refresh_reason,
+            source,
+        )
 
     # Compute indicators
     df_with_indicators = compute_all_indicators(df)
@@ -315,10 +367,15 @@ def analyze_stock(request: Request, body: AnalyzeRequest) -> AnalyzeResponse:
             ticker=ticker,
             cache_hit=cache_hit,
             data_last_updated=fetched_at,
+            data_max_date=max_date,
             source=source,
             row_count=row_count,
             min_date=min_date,
             max_date=max_date,
+            stale_by_days=stale_by_days,
+            refresh_attempted=refresh_attempted,
+            refresh_succeeded=refresh_succeeded,
+            refresh_reason=refresh_reason,
         ),
         indicators=IndicatorSummary(**indicator_summary),
         forecast=forecast_result,

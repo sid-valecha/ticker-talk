@@ -21,10 +21,15 @@ class Metadata(BaseModel):
     ticker: str
     cache_hit: bool
     data_last_updated: str
+    data_max_date: str
     source: str
     row_count: int
     min_date: str
     max_date: str
+    stale_by_days: int
+    refresh_attempted: bool
+    refresh_succeeded: bool
+    refresh_reason: str
 
 
 class IndicatorSummary(BaseModel):

@@ -34,8 +34,13 @@ class TestAnalyzeBasic:
         assert meta["row_count"] > 0
         assert meta["min_date"] is not None
         assert meta["max_date"] is not None
+        assert meta["data_max_date"] == meta["max_date"]
         assert meta["source"] in ("alpha_vantage", "demo")
         assert isinstance(meta["cache_hit"], bool)
+        assert isinstance(meta["stale_by_days"], int)
+        assert isinstance(meta["refresh_attempted"], bool)
+        assert isinstance(meta["refresh_succeeded"], bool)
+        assert isinstance(meta["refresh_reason"], str)
 
     def test_indicator_values_reasonable(self):
         response = client.post("/api/analyze", json={"ticker": "AAPL"})

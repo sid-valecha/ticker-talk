@@ -34,6 +34,22 @@ def _sample_df() -> pd.DataFrame:
     return df
 
 
+def _sample_df_with_dates(first: str, second: str) -> pd.DataFrame:
+    data = {
+        "date": [first, second],
+        "open": [100.0, 101.0],
+        "high": [102.0, 103.0],
+        "low": [99.0, 100.0],
+        "close": [101.0, 102.0],
+        "adj_close": [101.0, 102.0],
+        "volume": [1000000, 1200000],
+    }
+    df = pd.DataFrame(data)
+    df["date"] = pd.to_datetime(df["date"])
+    df.set_index("date", inplace=True)
+    return df
+
+
 def test_cache_store_and_retrieve(tmp_path, monkeypatch):
     db_path = tmp_path / "test.db"
     monkeypatch.setenv("TICKER_TALK_DB_PATH", str(db_path))
@@ -86,3 +102,28 @@ def test_demo_preload_uses_csv(tmp_path, monkeypatch):
     cached = get_cached_data(DEMO_TICKERS[0], ttl_hours=24)
     assert cached is not None
     assert cached["source"] == "demo"
+
+
+def test_demo_preload_does_not_overwrite_newer_cache(tmp_path, monkeypatch):
+    demo_dir = tmp_path / "demo_data"
+    demo_dir.mkdir()
+
+    for ticker in DEMO_TICKERS:
+        # Older demo snapshot
+        df = _sample_df_with_dates("2026-01-30", "2026-01-31").reset_index()
+        df.to_csv(demo_dir / f"{ticker}.csv", index=False)
+
+    monkeypatch.setenv(DEMO_DATA_DIR_ENV, str(demo_dir))
+    monkeypatch.setenv("TICKER_TALK_DB_PATH", str(tmp_path / "test.db"))
+
+    settings.ALPHA_VANTAGE_API_KEY = ""
+
+    init_db()
+    # Newer cached data should be preserved
+    store_data("AAPL", _sample_df_with_dates("2026-02-03", "2026-02-04"), source="alpha_vantage")
+
+    preload_demo_data_if_needed()
+    cached = get_cached_data("AAPL", ttl_hours=24, allow_stale=True)
+    assert cached is not None
+    assert cached["source"] == "alpha_vantage"
+    assert cached["max_date"] == "2026-02-04"

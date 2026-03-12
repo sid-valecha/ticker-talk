@@ -10,6 +10,8 @@ class Settings(BaseSettings):
     ALPHA_VANTAGE_BASE_URL: str = "https://www.alphavantage.co/query"
     CACHE_TTL_HOURS: int = 24
     CACHE_REFRESH_HOURS: int = 48
+    MARKET_DATA_LAG_DAYS: int = 1
+    MARKET_STALE_GRACE_BUSINESS_DAYS: int = 1
 
     # LLM Configuration
     LLM_PRIMARY_PROVIDER: str = "groq"

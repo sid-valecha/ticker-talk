@@ -240,3 +240,4 @@ SETUP_DEMO_DATA.md
 .env.example
 .claude/
 plan.md
+CodexPlan_LiveDataFreshness.md
