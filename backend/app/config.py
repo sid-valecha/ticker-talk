@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     CACHE_REFRESH_HOURS: int = 48
     MARKET_DATA_LAG_DAYS: int = 1
     MARKET_STALE_GRACE_BUSINESS_DAYS: int = 1
+    ALPHA_VANTAGE_FAILURE_COOLDOWN_MINUTES: int = 60
 
     # LLM Configuration
     LLM_PRIMARY_PROVIDER: str = "groq"

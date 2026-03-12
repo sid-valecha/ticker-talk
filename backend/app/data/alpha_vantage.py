@@ -11,6 +11,10 @@ from app.config import settings
 class AlphaVantageRateLimit(Exception):
     """Raised when Alpha Vantage rate limit is hit."""
 
+    def __init__(self, message: str, reason: str = "rate_limited"):
+        super().__init__(message)
+        self.reason = reason
+
 
 class AlphaVantageInvalidTicker(Exception):
     """Raised when Alpha Vantage reports an invalid ticker."""
@@ -24,15 +28,18 @@ def _parse_time_series(time_series: dict[str, Any]) -> pd.DataFrame:
     records: list[dict[str, Any]] = []
 
     for date_str, values in time_series.items():
+        close = float(values["4. close"])
+        adjusted_close = float(values.get("5. adjusted close", close))
+        volume_key = "6. volume" if "6. volume" in values else "5. volume"
         records.append(
             {
                 "date": pd.to_datetime(date_str),
                 "open": float(values["1. open"]),
                 "high": float(values["2. high"]),
                 "low": float(values["3. low"]),
-                "close": float(values["4. close"]),
-                "adj_close": float(values["5. adjusted close"]),
-                "volume": int(values["6. volume"]),
+                "close": close,
+                "adj_close": adjusted_close,
+                "volume": int(values[volume_key]),
             }
         )
 
@@ -45,14 +52,15 @@ def _parse_time_series(time_series: dict[str, Any]) -> pd.DataFrame:
     return df
 
 
-def fetch_daily_adjusted(ticker: str) -> pd.DataFrame:
+def fetch_daily(ticker: str) -> pd.DataFrame:
     if not settings.ALPHA_VANTAGE_API_KEY:
         raise AlphaVantageAPIError("Missing Alpha Vantage API key")
 
     params = {
-        "function": "TIME_SERIES_DAILY_ADJUSTED",
+        "function": "TIME_SERIES_DAILY",
         "symbol": ticker,
         "apikey": settings.ALPHA_VANTAGE_API_KEY,
+        "outputsize": "compact",
     }
 
     try:
@@ -64,8 +72,15 @@ def fetch_daily_adjusted(ticker: str) -> pd.DataFrame:
     except ValueError as exc:
         raise AlphaVantageAPIError("Invalid JSON from Alpha Vantage") from exc
 
-    if "Note" in payload or "Information" in payload:
-        raise AlphaVantageRateLimit(payload.get("Note") or payload.get("Information"))
+    if "Note" in payload:
+        raise AlphaVantageRateLimit(payload["Note"], reason="rate_limited")
+
+    if "Information" in payload:
+        info = payload["Information"]
+        reason = "rate_limited"
+        if "premium" in info.lower():
+            reason = "premium_endpoint"
+        raise AlphaVantageRateLimit(info, reason=reason)
 
     if "Error Message" in payload:
         raise AlphaVantageInvalidTicker(payload["Error Message"])
@@ -75,3 +90,8 @@ def fetch_daily_adjusted(ticker: str) -> pd.DataFrame:
         raise AlphaVantageAPIError("Missing Time Series data in Alpha Vantage response")
 
     return _parse_time_series(time_series)
+
+
+def fetch_daily_adjusted(ticker: str) -> pd.DataFrame:
+    """Backward-compatible wrapper for callers not yet renamed."""
+    return fetch_daily(ticker)

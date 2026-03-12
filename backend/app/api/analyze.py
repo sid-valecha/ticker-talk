@@ -21,9 +21,17 @@ from app.data.alpha_vantage import (
     AlphaVantageAPIError,
     AlphaVantageInvalidTicker,
     AlphaVantageRateLimit,
-    fetch_daily_adjusted,
+    fetch_daily,
 )
-from app.data.cache import get_cached_data, log_request, store_data
+from app.data.cache import (
+    get_cached_data,
+    get_refresh_state,
+    log_request,
+    mark_refresh_failure,
+    mark_refresh_success,
+    refresh_is_blocked,
+    store_data,
+)
 from app.data.demo_data import load_demo_data
 from app.data.freshness import stale_business_days
 from app.llm.explain import generate_explanation
@@ -48,6 +56,17 @@ router = APIRouter()
 
 TICKER_PATTERN = re.compile(r"^[A-Z]{1,5}$")
 logger = logging.getLogger(__name__)
+
+
+def _refresh_failure(
+    ticker: str,
+    reason: str,
+) -> dict[str, str]:
+    return mark_refresh_failure(
+        ticker,
+        reason=reason,
+        cooldown_minutes=settings.ALPHA_VANTAGE_FAILURE_COOLDOWN_MINUTES,
+    )
 
 
 @router.post("/parse_intent")
@@ -182,6 +201,8 @@ def analyze_stock(request: Request, body: AnalyzeRequest) -> AnalyzeResponse:
     refresh_attempted = False
     refresh_succeeded = False
     refresh_reason = "not_stale"
+    refresh_blocked_until = None
+    refresh_last_failure_reason = None
 
     # Check cache first (allow stale for refresh decisions)
     cached = get_cached_data(
@@ -189,6 +210,12 @@ def analyze_stock(request: Request, body: AnalyzeRequest) -> AnalyzeResponse:
         ttl_hours=settings.CACHE_TTL_HOURS,
         allow_stale=True,
     )
+    refresh_state = get_refresh_state(ticker)
+    blocked_state = refresh_is_blocked(ticker)
+    if refresh_state:
+        refresh_last_failure_reason = refresh_state.get("last_failure_reason")
+    if blocked_state:
+        refresh_blocked_until = blocked_state.get("blocked_until")
 
     if cached:
         # Reconstruct DataFrame from cached data
@@ -216,38 +243,56 @@ def analyze_stock(request: Request, body: AnalyzeRequest) -> AnalyzeResponse:
                 if not settings.ALPHA_VANTAGE_API_KEY:
                     refresh_reason = "missing_api_key"
                 else:
-                    refresh_attempted = True
-                    logger.info(
-                        "Refreshing stale ticker=%s source=%s stale_business_days=%s",
-                        ticker,
-                        source,
-                        stale_days,
-                    )
-                    try:
-                        api_df = fetch_daily_adjusted(ticker)
-                        # Merge with cached data, prefer newest values
-                        combined = pd.concat([df, api_df]).sort_index()
-                        combined = combined[~combined.index.duplicated(keep="last")]
+                    blocked = refresh_is_blocked(ticker)
+                    if blocked:
+                        refresh_reason = "cooldown_active"
+                        refresh_blocked_until = blocked["blocked_until"]
+                        refresh_last_failure_reason = blocked["last_failure_reason"] or refresh_last_failure_reason
+                    else:
+                        refresh_attempted = True
+                        logger.info(
+                            "Refreshing stale ticker=%s source=%s stale_business_days=%s",
+                            ticker,
+                            source,
+                            stale_days,
+                        )
+                        try:
+                            api_df = fetch_daily(ticker)
+                            # Merge with cached data, prefer newest values
+                            combined = pd.concat([df, api_df]).sort_index()
+                            combined = combined[~combined.index.duplicated(keep="last")]
 
-                        stored = store_data(ticker, combined, source="alpha_vantage")
-                        df = combined
-                        cache_hit = False
-                        source = stored["source"]
-                        fetched_at = stored["fetched_at"]
-                        row_count = stored["row_count"]
-                        min_date = stored["min_date"]
-                        max_date = stored["max_date"]
-                        refresh_succeeded = True
-                        refresh_reason = "refreshed_from_alpha_vantage"
-                    except AlphaVantageRateLimit as exc:
-                        refresh_reason = "rate_limited"
-                        logger.warning("Refresh rate-limited for %s: %s", ticker, exc)
-                    except AlphaVantageInvalidTicker as exc:
-                        refresh_reason = "invalid_ticker"
-                        logger.warning("Refresh invalid ticker for %s: %s", ticker, exc)
-                    except AlphaVantageAPIError as exc:
-                        refresh_reason = "api_error"
-                        logger.warning("Refresh API error for %s: %s", ticker, exc)
+                            stored = store_data(ticker, combined, source="alpha_vantage")
+                            mark_refresh_success(ticker)
+                            refresh_blocked_until = None
+                            refresh_last_failure_reason = None
+                            df = combined
+                            cache_hit = False
+                            source = stored["source"]
+                            fetched_at = stored["fetched_at"]
+                            row_count = stored["row_count"]
+                            min_date = stored["min_date"]
+                            max_date = stored["max_date"]
+                            refresh_succeeded = True
+                            refresh_reason = "refreshed_from_alpha_vantage"
+                        except AlphaVantageRateLimit as exc:
+                            state = _refresh_failure(ticker, exc.reason)
+                            refresh_reason = exc.reason
+                            refresh_blocked_until = state["blocked_until"]
+                            refresh_last_failure_reason = state["last_failure_reason"]
+                            logger.warning("Refresh rate-limited for %s: %s", ticker, exc)
+                        except AlphaVantageInvalidTicker as exc:
+                            state = _refresh_failure(ticker, "invalid_ticker")
+                            refresh_reason = "invalid_ticker"
+                            refresh_blocked_until = state["blocked_until"]
+                            refresh_last_failure_reason = state["last_failure_reason"]
+                            logger.warning("Refresh invalid ticker for %s: %s", ticker, exc)
+                        except AlphaVantageAPIError as exc:
+                            state = _refresh_failure(ticker, "api_error")
+                            refresh_reason = "api_error"
+                            refresh_blocked_until = state["blocked_until"]
+                            refresh_last_failure_reason = state["last_failure_reason"]
+                            logger.warning("Refresh API error for %s: %s", ticker, exc)
         else:
             # Invalid cached data, treat as cache miss
             cached = None
@@ -258,19 +303,35 @@ def analyze_stock(request: Request, body: AnalyzeRequest) -> AnalyzeResponse:
         df = None
         refresh_reason = "cache_miss"
         if settings.ALPHA_VANTAGE_API_KEY:
-            refresh_attempted = True
-            try:
-                df = fetch_daily_adjusted(ticker)
-                refresh_succeeded = True
-                refresh_reason = "cache_miss_api_fetch"
-            except AlphaVantageRateLimit as exc:
-                refresh_reason = "rate_limited"
-                logger.warning("Cache miss API rate-limited for %s: %s", ticker, exc)
-            except AlphaVantageInvalidTicker as exc:
-                raise HTTPException(status_code=400, detail=str(exc)) from exc
-            except AlphaVantageAPIError as exc:
-                refresh_reason = "api_error"
-                logger.warning("Cache miss API error for %s: %s", ticker, exc)
+            blocked = refresh_is_blocked(ticker)
+            if blocked:
+                refresh_reason = "cooldown_active"
+                refresh_blocked_until = blocked["blocked_until"]
+                refresh_last_failure_reason = blocked["last_failure_reason"] or refresh_last_failure_reason
+            else:
+                refresh_attempted = True
+                try:
+                    df = fetch_daily(ticker)
+                    mark_refresh_success(ticker)
+                    refresh_blocked_until = None
+                    refresh_last_failure_reason = None
+                    refresh_succeeded = True
+                    refresh_reason = "cache_miss_api_fetch"
+                except AlphaVantageRateLimit as exc:
+                    state = _refresh_failure(ticker, exc.reason)
+                    refresh_reason = exc.reason
+                    refresh_blocked_until = state["blocked_until"]
+                    refresh_last_failure_reason = state["last_failure_reason"]
+                    logger.warning("Cache miss API rate-limited for %s: %s", ticker, exc)
+                except AlphaVantageInvalidTicker as exc:
+                    _refresh_failure(ticker, "invalid_ticker")
+                    raise HTTPException(status_code=400, detail=str(exc)) from exc
+                except AlphaVantageAPIError as exc:
+                    state = _refresh_failure(ticker, "api_error")
+                    refresh_reason = "api_error"
+                    refresh_blocked_until = state["blocked_until"]
+                    refresh_last_failure_reason = state["last_failure_reason"]
+                    logger.warning("Cache miss API error for %s: %s", ticker, exc)
         else:
             refresh_reason = "missing_api_key"
 
@@ -376,6 +437,8 @@ def analyze_stock(request: Request, body: AnalyzeRequest) -> AnalyzeResponse:
             refresh_attempted=refresh_attempted,
             refresh_succeeded=refresh_succeeded,
             refresh_reason=refresh_reason,
+            refresh_blocked_until=refresh_blocked_until,
+            refresh_last_failure_reason=refresh_last_failure_reason,
         ),
         indicators=IndicatorSummary(**indicator_summary),
         forecast=forecast_result,

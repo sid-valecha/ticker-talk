@@ -11,7 +11,7 @@ from app.data.alpha_vantage import (
     AlphaVantageAPIError,
     AlphaVantageInvalidTicker,
     AlphaVantageRateLimit,
-    fetch_daily_adjusted,
+    fetch_daily,
 )
 from app.data.cache import get_cached_data, store_data
 
@@ -104,7 +104,7 @@ def preload_demo_data_if_needed() -> None:
 
         if settings.ALPHA_VANTAGE_API_KEY:
             try:
-                api_df = fetch_daily_adjusted(ticker)
+                api_df = fetch_daily(ticker)
                 store_data(ticker, api_df, source="alpha_vantage")
                 continue
             except (AlphaVantageAPIError, AlphaVantageRateLimit, AlphaVantageInvalidTicker):

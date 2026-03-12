@@ -30,6 +30,8 @@ class Metadata(BaseModel):
     refresh_attempted: bool
     refresh_succeeded: bool
     refresh_reason: str
+    refresh_blocked_until: Optional[str] = None
+    refresh_last_failure_reason: Optional[str] = None
 
 
 class IndicatorSummary(BaseModel):

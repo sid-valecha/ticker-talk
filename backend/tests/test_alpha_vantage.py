@@ -1,12 +1,14 @@
 import types
 
 import pandas as pd
+import pytest
 import requests
 
 from app.config import settings
 from app.data.alpha_vantage import (
     AlphaVantageInvalidTicker,
     AlphaVantageRateLimit,
+    fetch_daily,
     fetch_daily_adjusted,
 )
 
@@ -33,16 +35,14 @@ def test_fetch_daily_adjusted_success(monkeypatch):
                 "2. high": "101.0",
                 "3. low": "99.0",
                 "4. close": "100.5",
-                "5. adjusted close": "100.5",
-                "6. volume": "1000000",
+                "5. volume": "1000000",
             },
             "2026-01-30": {
                 "1. open": "98.0",
                 "2. high": "100.0",
                 "3. low": "97.0",
                 "4. close": "99.0",
-                "5. adjusted close": "99.0",
-                "6. volume": "900000",
+                "5. volume": "900000",
             },
         }
     }
@@ -57,6 +57,33 @@ def test_fetch_daily_adjusted_success(monkeypatch):
     assert isinstance(df, pd.DataFrame)
     assert "adj_close" in df.columns
     assert len(df) == 2
+    assert df.iloc[-1]["adj_close"] == df.iloc[-1]["close"]
+
+
+def test_fetch_daily_alias(monkeypatch):
+    settings.ALPHA_VANTAGE_API_KEY = "test-key"
+
+    payload = {
+        "Time Series (Daily)": {
+            "2026-01-31": {
+                "1. open": "100.0",
+                "2. high": "101.0",
+                "3. low": "99.0",
+                "4. close": "100.5",
+                "5. volume": "1000000",
+            }
+        }
+    }
+
+    monkeypatch.setattr(
+        requests,
+        "get",
+        lambda *args, **kwargs: _mock_response(payload),
+    )
+
+    df = fetch_daily("AAPL")
+    assert isinstance(df, pd.DataFrame)
+    assert df.iloc[0]["adj_close"] == 100.5
 
 
 def test_fetch_daily_adjusted_rate_limit(monkeypatch):
@@ -69,11 +96,26 @@ def test_fetch_daily_adjusted_rate_limit(monkeypatch):
         lambda *args, **kwargs: _mock_response(payload),
     )
 
-    try:
+    with pytest.raises(AlphaVantageRateLimit) as exc_info:
         fetch_daily_adjusted("AAPL")
-        assert False, "Expected AlphaVantageRateLimit"
-    except AlphaVantageRateLimit:
-        assert True
+
+    assert exc_info.value.reason == "rate_limited"
+
+
+def test_fetch_daily_adjusted_information_payload(monkeypatch):
+    settings.ALPHA_VANTAGE_API_KEY = "test-key"
+
+    payload = {"Information": "Thank you for using Alpha Vantage"}
+    monkeypatch.setattr(
+        requests,
+        "get",
+        lambda *args, **kwargs: _mock_response(payload),
+    )
+
+    with pytest.raises(AlphaVantageRateLimit) as exc_info:
+        fetch_daily_adjusted("AAPL")
+
+    assert exc_info.value.reason == "rate_limited"
 
 
 def test_fetch_daily_adjusted_invalid_ticker(monkeypatch):
@@ -86,8 +128,5 @@ def test_fetch_daily_adjusted_invalid_ticker(monkeypatch):
         lambda *args, **kwargs: _mock_response(payload),
     )
 
-    try:
+    with pytest.raises(AlphaVantageInvalidTicker):
         fetch_daily_adjusted("INVALID")
-        assert False, "Expected AlphaVantageInvalidTicker"
-    except AlphaVantageInvalidTicker:
-        assert True

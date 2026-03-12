@@ -28,7 +28,7 @@ python3 scripts/update_demo_data.py --mode ticker --ticker AAPL
 
 ## Key behavior
 
-- Uses `TIME_SERIES_DAILY_ADJUSTED` via the shared Alpha Vantage client.
+- Uses `TIME_SERIES_DAILY` via the shared Alpha Vantage client.
 - Writes normalized CSV columns: `date, open, high, low, close, adj_close, volume`.
 - Clears only cache rows for tickers actually updated.
 - Sleeps between calls (default `12s`) to respect 5 calls/minute.

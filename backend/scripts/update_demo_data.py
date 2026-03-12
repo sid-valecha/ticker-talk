@@ -30,7 +30,7 @@ from app.data.alpha_vantage import (
     AlphaVantageAPIError,
     AlphaVantageInvalidTicker,
     AlphaVantageRateLimit,
-    fetch_daily_adjusted,
+    fetch_daily,
 )
 from app.data.cache import get_db_path
 from app.data.demo_data import DEMO_TICKERS, load_demo_data
@@ -86,7 +86,7 @@ def _append_new_rows(ticker: str) -> bool:
         return False
 
     try:
-        api_df = fetch_daily_adjusted(ticker)
+        api_df = fetch_daily(ticker)
     except AlphaVantageRateLimit as exc:
         print(f"  ✗ Rate limited for {ticker}: {exc}")
         return False

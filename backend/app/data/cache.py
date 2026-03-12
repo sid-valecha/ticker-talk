@@ -3,7 +3,7 @@
 import json
 import os
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Optional
 
@@ -57,6 +57,18 @@ def init_db() -> None:
                 cache_hit BOOLEAN,
                 latency_ms INTEGER,
                 timestamp TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS ticker_refresh_state (
+                ticker TEXT PRIMARY KEY,
+                last_attempted_at TEXT,
+                last_succeeded_at TEXT,
+                last_failed_at TEXT,
+                last_failure_reason TEXT,
+                blocked_until TEXT
             )
             """
         )
@@ -192,3 +204,115 @@ def log_request(endpoint: str, ticker: str, cache_hit: bool, latency_ms: int) ->
     except sqlite3.Error:
         # Metrics should never break the request path
         pass
+
+
+def get_refresh_state(ticker: str) -> Optional[dict[str, Any]]:
+    db_path = get_db_path()
+    if not db_path.exists():
+        return None
+
+    with sqlite3.connect(db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT last_attempted_at, last_succeeded_at, last_failed_at,
+                   last_failure_reason, blocked_until
+            FROM ticker_refresh_state
+            WHERE ticker = ?
+            """,
+            (ticker,),
+        )
+        row = cursor.fetchone()
+
+    if not row:
+        return None
+
+    return {
+        "last_attempted_at": row[0],
+        "last_succeeded_at": row[1],
+        "last_failed_at": row[2],
+        "last_failure_reason": row[3],
+        "blocked_until": row[4],
+    }
+
+
+def mark_refresh_success(ticker: str) -> None:
+    db_path = get_db_path()
+    timestamp = datetime.now().isoformat(timespec="seconds")
+
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO ticker_refresh_state (
+                ticker, last_attempted_at, last_succeeded_at,
+                last_failed_at, last_failure_reason, blocked_until
+            ) VALUES (?, ?, ?, NULL, NULL, NULL)
+            ON CONFLICT(ticker) DO UPDATE SET
+                last_attempted_at = excluded.last_attempted_at,
+                last_succeeded_at = excluded.last_succeeded_at,
+                last_failed_at = NULL,
+                last_failure_reason = NULL,
+                blocked_until = NULL
+            """,
+            (ticker, timestamp, timestamp),
+        )
+        conn.commit()
+
+
+def mark_refresh_failure(
+    ticker: str,
+    reason: str,
+    cooldown_minutes: int,
+) -> dict[str, str]:
+    db_path = get_db_path()
+    timestamp = datetime.now().isoformat(timespec="seconds")
+    blocked_until = (
+        datetime.now() + timedelta(minutes=max(cooldown_minutes, 0))
+    ).isoformat(timespec="seconds")
+
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO ticker_refresh_state (
+                ticker, last_attempted_at, last_succeeded_at,
+                last_failed_at, last_failure_reason, blocked_until
+            ) VALUES (?, ?, NULL, ?, ?, ?)
+            ON CONFLICT(ticker) DO UPDATE SET
+                last_attempted_at = excluded.last_attempted_at,
+                last_failed_at = excluded.last_failed_at,
+                last_failure_reason = excluded.last_failure_reason,
+                blocked_until = excluded.blocked_until
+            """,
+            (ticker, timestamp, timestamp, reason, blocked_until),
+        )
+        conn.commit()
+
+    return {
+        "last_attempted_at": timestamp,
+        "last_failed_at": timestamp,
+        "last_failure_reason": reason,
+        "blocked_until": blocked_until,
+    }
+
+
+def refresh_is_blocked(ticker: str) -> Optional[dict[str, str]]:
+    state = get_refresh_state(ticker)
+    if not state:
+        return None
+
+    blocked_until = state.get("blocked_until")
+    if not blocked_until:
+        return None
+
+    try:
+        blocked_dt = datetime.fromisoformat(blocked_until)
+    except ValueError:
+        return None
+
+    if blocked_dt <= datetime.now():
+        return None
+
+    return {
+        "blocked_until": blocked_until,
+        "last_failure_reason": state.get("last_failure_reason") or "",
+    }

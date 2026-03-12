@@ -6,7 +6,16 @@ import pytest
 
 import app.data.cache as cache_module
 from app.config import settings
-from app.data.cache import get_cached_data, get_db_path, init_db, store_data
+from app.data.cache import (
+    get_cached_data,
+    get_db_path,
+    get_refresh_state,
+    init_db,
+    mark_refresh_failure,
+    mark_refresh_success,
+    refresh_is_blocked,
+    store_data,
+)
 from app.data.demo_data import DEMO_DATA_DIR_ENV, DEMO_TICKERS, preload_demo_data_if_needed
 
 
@@ -127,3 +136,29 @@ def test_demo_preload_does_not_overwrite_newer_cache(tmp_path, monkeypatch):
     assert cached is not None
     assert cached["source"] == "alpha_vantage"
     assert cached["max_date"] == "2026-02-04"
+
+
+def test_refresh_failure_sets_cooldown(tmp_path, monkeypatch):
+    db_path = tmp_path / "test.db"
+    monkeypatch.setenv("TICKER_TALK_DB_PATH", str(db_path))
+
+    init_db()
+    state = mark_refresh_failure("AAPL", reason="rate_limited", cooldown_minutes=30)
+
+    assert state["last_failure_reason"] == "rate_limited"
+    assert refresh_is_blocked("AAPL") is not None
+
+
+def test_refresh_success_clears_cooldown(tmp_path, monkeypatch):
+    db_path = tmp_path / "test.db"
+    monkeypatch.setenv("TICKER_TALK_DB_PATH", str(db_path))
+
+    init_db()
+    mark_refresh_failure("AAPL", reason="rate_limited", cooldown_minutes=30)
+    mark_refresh_success("AAPL")
+
+    state = get_refresh_state("AAPL")
+    assert state is not None
+    assert state["last_failure_reason"] is None
+    assert state["blocked_until"] is None
+    assert refresh_is_blocked("AAPL") is None
