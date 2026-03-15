@@ -71,6 +71,7 @@ def _load_demo_file_tickers() -> Set[str]:
 _DEMO_FILE_TICKERS = _load_demo_file_tickers()
 _KNOWN_TICKERS = _DEMO_FILE_TICKERS or set(DEMO_TICKERS)
 _TICKER_TOKEN_PATTERN = re.compile(r"\b[a-zA-Z]{1,5}\b")
+_COMPACT_TICKER_HORIZON_PATTERN = re.compile(r"\b([a-zA-Z]{1,5})(30|7)\b", re.IGNORECASE)
 
 _COMPANY_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"\bapple\b", re.IGNORECASE), "AAPL"),
@@ -142,6 +143,11 @@ def _extract_ticker_candidates(query: str) -> Set[str]:
         if token_upper in _KNOWN_TICKERS:
             candidates.add(token_upper)
 
+    for compact_match in _COMPACT_TICKER_HORIZON_PATTERN.finditer(query):
+        ticker = compact_match.group(1).upper()
+        if ticker in _KNOWN_TICKERS:
+            candidates.add(ticker)
+
     for pattern, ticker in _COMPANY_PATTERNS:
         if pattern.search(query):
             candidates.add(ticker)
@@ -153,6 +159,11 @@ def _extract_horizon(query: str) -> Optional[int]:
     match = _HORIZON_PATTERN.search(query)
     if match:
         return int(match.group(1))
+
+    compact_match = _COMPACT_TICKER_HORIZON_PATTERN.search(query)
+    if compact_match:
+        return int(compact_match.group(2))
+
     if _FORECAST_TERMS.search(query):
         return 7
     return None
